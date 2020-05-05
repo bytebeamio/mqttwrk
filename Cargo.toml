@@ -1,6 +1,8 @@
 [package]
 name = "mqttwrk"
+description = "Wrk inspired tool for scale and performance testing mqtt brokers"
 version = "0.1.0"
+license = "Apache-2.0"
 authors = ["tekjar <raviteja@bytebeam.io>"]
 edition = "2018"
 
