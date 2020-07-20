@@ -35,7 +35,7 @@ pub async fn start(id: &str, payload_size: usize, count: u16) {
     let mut acks_elapsed_ms = 0;
 
     loop {
-        let (inc, _ouc) = eventloop.poll().await.unwrap();
+        let (inc, _ouc) = eventloop.poll().await.unwrap();   // handle conn error ?
         match inc {
             Some(v) => {
                 match v {
