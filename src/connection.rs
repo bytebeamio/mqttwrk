@@ -1,6 +1,6 @@
-use rumq_client::{self, eventloop, MqttOptions, Notification, PacketIdentifier, QoS, Request};
-use std::collections::HashSet;
+use rumqttc::{MqttOptions, EventLoop, Request, QoS, Packet, Incoming, Outgoing};
 use std::time::{Duration, Instant};
+use std::collections::HashSet;
 
 use rand::Rng;
 use tokio::select;
@@ -19,16 +19,14 @@ pub async fn start(id: &str, payload_size: usize, count: u16) {
     // NOTE More the inflight size, better the perf
     mqttoptions.set_inflight(200);
 
-    let mut eventloop = eventloop(mqttoptions, requests_rx);
+    let mut eventloop = EventLoop::new(mqttoptions, requests_rx).await;
     let client_id = id.to_owned();
     task::spawn(async move {
         requests(&client_id, payload_size, count, requests_tx).await;
     });
 
-    let mut stream = eventloop.connect().await.unwrap();
     let mut acks = acklist(count);
     let mut incoming = acklist(count);
-    let mut interval = time::interval(Duration::from_secs(1));
     let mut data = Metrics {
         progress: 0,
     };
@@ -37,41 +35,30 @@ pub async fn start(id: &str, payload_size: usize, count: u16) {
     let mut acks_elapsed_ms = 0;
 
     loop {
-        let notification = select! {
-            notification = stream.next() => match notification {
-                Some(notification) => notification,
-                None => break
+        let (inc, _ouc) = eventloop.poll().await.unwrap();
+        match inc {
+            Some(v) => {
+                match v {
+                    Incoming::Puback(pkid) => {
+                        acks.remove(&pkid.pkid);
+                        acks_elapsed_ms = start.elapsed().as_millis();
+                        continue;
+                    },
+                    Incoming::Suback(suback)=> {
+                        acks.remove(&suback.pkid);
+                    },
+                    Incoming::Publish(publish) => {
+                        data.progress = publish.pkid;
+                        incoming.remove(&publish.pkid);
+                    },
+                    v => {
+                        println!("Incoming={:?}", v);
+                        continue;
+                    },
+                }
             },
-            _ = interval.tick() => {
-                // println!("Id = {},  Progress = {:?}", id, data.progress);
-                continue;
-            }
-        };
-
-        match notification {
-            Notification::Puback(pkid) => {
-                let PacketIdentifier(pkid) = pkid;
-                acks.remove(&pkid);
-                acks_elapsed_ms = start.elapsed().as_millis();
-                // println!("Id = {}, Elapsed = {:?}, Pkid = {:?}", id, start.elapsed().as_millis(), pkid);
-                // start = Instant::now();
-                continue;
-            }
-            Notification::Suback(suback) => {
-                let PacketIdentifier(pkid) = suback.pkid;
-                acks.remove(&pkid);
-                suback.pkid;
-            }
-            Notification::Publish(publish) => {
-                let PacketIdentifier(pkid) = publish.pkid.unwrap();
-                data.progress = pkid;
-                incoming.remove(&pkid);
-            }
-            notification => {
-                println!("Id = {}, Notification = {:?}", id, notification);
-                continue;
-            }
-        };
+            None => println!("No incoming"),
+        }
 
         if incoming.len() == 0 {
             break;
@@ -105,13 +92,13 @@ pub async fn start(id: &str, payload_size: usize, count: u16) {
 
 async fn requests(id: &str, payload_size: usize, count: u16, mut requests_tx: Sender<Request>) {
     let topic = format!("hello/{}/world", id);
-    let subscription = rumq_client::Subscribe::new(&topic, QoS::AtLeastOnce);
+    let subscription = rumqttc::Subscribe::new(&topic, QoS::AtLeastOnce);
     let _ = requests_tx.send(Request::Subscribe(subscription)).await;
 
     for i in 0..count {
         let mut payload = generate_payload(payload_size);
         payload[0] = (i % 255) as u8;
-        let publish = rumq_client::Publish::new(&topic, QoS::AtLeastOnce, payload);
+        let publish = rumqttc::Publish::new(&topic, QoS::AtLeastOnce, payload);
         let publish = Request::Publish(publish);
         if let Err(_) = requests_tx.send(publish).await {
             break;
