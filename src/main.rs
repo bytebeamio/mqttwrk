@@ -30,6 +30,30 @@ struct Config {
     /// number of messages
     #[argh(option, short = 'n', default = "10000")]
     count: u16,
+
+    /// server
+    #[argh(option, short = 's', default = "String::from(\"localhost\")")]
+    server: String,
+
+    /// port
+    #[argh(option, short = 'P', default = "8883")]
+    port : u16,
+
+    /// keep_alive
+    #[argh(option, short = 'k', default = "5")]
+    keep_alive: u16,
+
+    /// infligh_messages
+    #[argh(option, short = 'q', default = "200")]
+    inflight: usize,
+
+    // ///use mTLS
+    // #[argh(option, short = 't', default = "false")]
+    // tls: bool,
+
+    // /// certs dir
+    // #[argh(option, short = 'd')]
+    // cert_dir: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -43,13 +67,23 @@ async fn main() {
     let config: Config = argh::from_env();
     let count = config.count;
     let payload_size = config.payload;
+    let conns = config.connections;
+    let server = config.server;
+    // let cert_dir = config.cert_dir;
+    // let tls = config.tls;
+    let port  = config.port;
+    let keep_alive = config.keep_alive;
+    let inflight = config.inflight;
 
-    for i in 0..config.connections {
+    for i in 0..conns{
+        let srv = server.to_string();
         task::spawn(async move {
             let id = format!("mqtt-{}", i);
-            connection::start(&id, payload_size, count).await;
+            connection::start(&id, payload_size, count, srv, port, keep_alive, inflight).await;
+            //&conn_config.do_something().await;
         });
     }
+    
 
     time::delay_for(Duration::from_secs(100)).await;
 }
