@@ -37,15 +37,23 @@ struct Config {
 
     /// port
     #[argh(option, short = 'P', default = "8883")]
-    port : i32,
+    port : u16,
 
-    ///use mTLS
-    #[argh(option, short = 't', default = "false")]
-    tls: bool,
+    /// keep_alive
+    #[argh(option, short = 'k', default = "5")]
+    keep_alive: u16,
 
-    /// certs dir
-    #[argh(option, short = 'd')]
-    cert_dir: Option<String>,
+    /// infligh_messages
+    #[argh(option, short = 'q', default = "200")]
+    inflight: usize,
+
+    // ///use mTLS
+    // #[argh(option, short = 't', default = "false")]
+    // tls: bool,
+
+    // /// certs dir
+    // #[argh(option, short = 'd')]
+    // cert_dir: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -61,16 +69,17 @@ async fn main() {
     let payload_size = config.payload;
     let conns = config.connections;
     let server = config.server;
-    let cert_dir = config.cert_dir;
-    let tls = config.tls;
+    // let cert_dir = config.cert_dir;
+    // let tls = config.tls;
+    let port  = config.port;
+    let keep_alive = config.keep_alive;
+    let inflight = config.inflight;
 
     for i in 0..conns{
         let srv = server.to_string();
-        //let c_dir:  = cert_dir.clone();
-        let dd = cert_dir.clone();
         task::spawn(async move {
             let id = format!("mqtt-{}", i);
-            connection::start(&id, payload_size, count, srv, dd, tls).await;
+            connection::start(&id, payload_size, count, srv, port, keep_alive, inflight).await;
             //&conn_config.do_something().await;
         });
     }

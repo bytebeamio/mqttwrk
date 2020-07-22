@@ -11,22 +11,11 @@ use tokio::time;
 
 use crate::Metrics;
 
-pub async fn start(id: &str, payload_size: usize, count: u16, server: String, cert_dir: Option<String>, tls: bool) {
+pub async fn start(id: &str, payload_size: usize, count: u16, server: String, port: u16, keep_alive: u16, inflight: usize) {
     let (requests_tx, requests_rx) = channel(10);
-    let mut mqttoptions = MqttOptions::new(id, "localhost", 1883);
-    println!("{:?}", server);
-    println!("{:?}", cert_dir);
-
-    // To do, read tls files and set mqttoptions
-    match tls {
-        true => {},
-        false => {},
-    };
-
-    mqttoptions.set_keep_alive(5);
-
-    // NOTE More the inflight size, better the perf
-    mqttoptions.set_inflight(200);
+    let mut mqttoptions = MqttOptions::new(id, server, port);
+    mqttoptions.set_keep_alive(keep_alive);
+    mqttoptions.set_inflight(inflight);
 
     let mut eventloop = EventLoop::new(mqttoptions, requests_rx).await;
     let client_id = id.to_owned();
@@ -44,7 +33,8 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, ce
     let mut acks_elapsed_ms = 0;
 
     loop {
-        let (inc, _ouc) = eventloop.poll().await.unwrap();   // handle conn error ?
+        let res =  eventloop.poll().await.unwrap();
+        let (inc, _ouc) = res;
         match inc {
             Some(v) => {
                 match v {
