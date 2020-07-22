@@ -11,9 +11,45 @@ use tokio::time;
 
 use crate::Metrics;
 
-pub async fn start(id: &str, payload_size: usize, count: u16) {
+#[derive(Debug)]
+pub struct Params {
+    id: String,
+    payload_size: usize,
+    count: u16,
+    server: String,
+    port: i16,
+    ca_file: Option<String>,
+    client_cert: Option<String>,
+    client_key: Option<String>
+}
+
+impl Params {
+    pub fn new(id: String, payload_size: usize, count: u16, server: String, port: i16) -> Params {
+        Params{
+            id,
+            payload_size,
+            count,
+            server,
+            port,
+            ca_file: None,
+            client_cert: None,
+            client_key: None,
+        }
+    }
+
+    pub async fn do_something(self)  {
+        println!("Doing Something");
+    }
+}
+
+
+
+pub async fn start(id: &str, payload_size: usize, count: u16, server: String, cert_dir: Option<String>, tls: bool) {
     let (requests_tx, requests_rx) = channel(10);
     let mut mqttoptions = MqttOptions::new(id, "localhost", 1883);
+    println!("{:?}", server);
+    println!("{:?}", cert_dir);
+
     mqttoptions.set_keep_alive(5);
 
     // NOTE More the inflight size, better the perf
