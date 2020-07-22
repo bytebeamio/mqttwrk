@@ -8,6 +8,7 @@
 //! - Offline messaging
 //! - Halfopen connection detection
 
+use futures;
 use argh::FromArgs;
 use tokio::task;
 use tokio::time;
@@ -75,15 +76,13 @@ async fn main() {
     let keep_alive = config.keep_alive;
     let inflight = config.inflight;
 
+    let mut handles = vec![];
     for i in 0..conns{
         let srv = server.to_string();
-        task::spawn(async move {
+        handles.push(task::spawn(async move {
             let id = format!("mqtt-{}", i);
             connection::start(&id, payload_size, count, srv, port, keep_alive, inflight).await;
-            //&conn_config.do_something().await;
-        });
+        }));
     }
-    
-
-    time::delay_for(Duration::from_secs(100)).await;
+    futures::future::join_all(handles).await;
 }
