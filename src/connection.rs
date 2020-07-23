@@ -19,6 +19,8 @@ fn set_tls(mqttoptions: &mut MqttOptions, ca_file: Option<String>, client_file: 
     let mut cert_data = Vec::new();
     let mut key_data = Vec::new();
 
+    println!("Inside set_tls");
+
     // Unwrap or handle?
     match ca_file {
         Some(file_path) => {
