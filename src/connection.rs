@@ -1,6 +1,9 @@
 use rumqttc::{MqttOptions, EventLoop, Request, QoS, Packet, Incoming, Outgoing};
 use std::time::{Duration, Instant};
 use std::collections::HashSet;
+use std::io;
+use std::io::prelude::*;
+use std::fs::File;
 
 use rand::Rng;
 use tokio::select;
@@ -11,13 +14,57 @@ use tokio::time;
 
 use crate::Metrics;
 
-pub async fn start(id: &str, payload_size: usize, count: u16, server: String, port: u16, keep_alive: u16, inflight: usize) {
+fn set_tls(mqttoptions: &mut MqttOptions, ca_file: Option<String>, client_file: Option<String>, client_key: Option<String>, use_ssl: i16) {
+    let mut ca_data: Vec<u8> = Vec::new();
+    let mut cert_data = Vec::new();
+    let mut key_data = Vec::new();
+
+    // Unwrap or handle?
+    match ca_file {
+        Some(file_path) => {
+            let mut ca_file = File::open(file_path).unwrap();
+            ca_file.read_to_end(&mut ca_data).unwrap();
+            
+        },
+        None => println!("No ca file provided"),
+    }
+    mqttoptions.set_ca(ca_data);
+
+    match client_file {
+        Some(file_path) => {
+            let mut cert_file = File::open(file_path).unwrap();
+            cert_file.read_to_end(&mut cert_data).unwrap();
+        },
+        None => println!("No client_cert privided"),
+    };
+    match client_key {
+        Some(file_path) => {
+           let mut key_file = File::open(file_path).unwrap();
+           key_file.read_to_end(&mut key_data).unwrap();
+        },
+        None => println!("No client key provided"),
+    };
+    if use_ssl == 2 {
+        mqttoptions.set_client_auth(cert_data, key_data);
+    }
+}
+
+pub async fn start(id: &str, payload_size: usize, count: u16, server: String, port: u16,
+        keep_alive: u16, inflight: usize, use_ssl: i16, ca_file: Option<String>,
+        client_cert: Option<String>, client_key: Option<String>) {
     let (requests_tx, requests_rx) = channel(10);
     let mut mqttoptions = MqttOptions::new(id, server, port);
     mqttoptions.set_keep_alive(keep_alive);
     mqttoptions.set_inflight(inflight);
+    
+    match use_ssl {
+        1 => set_tls(&mut mqttoptions, ca_file, client_cert, client_key, 1),  
+        2 => set_tls(&mut mqttoptions, ca_file, client_cert, client_key, use_ssl),    // set ca as well as client cert and key
+        _ => {},
+    };
 
     let mut eventloop = EventLoop::new(mqttoptions, requests_rx).await;
+
     let client_id = id.to_owned();
     task::spawn(async move {
         requests(&client_id, payload_size, count, requests_tx).await;
