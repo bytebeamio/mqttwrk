@@ -83,7 +83,8 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
 
     loop {
         let res =  eventloop.poll().await.unwrap();
-        let (inc, _ouc) = res;
+        let (inc, ouc) = res;
+        println!("out{:?}", ouc);
         match inc {
             Some(v) => {
                 match v {
