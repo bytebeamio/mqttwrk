@@ -8,6 +8,7 @@
 //! - Offline messaging
 //! - Halfopen connection detection
 
+use futures;
 use argh::FromArgs;
 use tokio::task;
 use tokio::time;
@@ -47,13 +48,21 @@ struct Config {
     #[argh(option, short = 'q', default = "200")]
     inflight: usize,
 
-    // ///use mTLS
-    // #[argh(option, short = 't', default = "false")]
-    // tls: bool,
+    /// tls, 0, 1, 2. 0 -> no tls, 1 -> server verification, 2-> mTLS
+    #[argh(option, short ='t', default = "0")]
+    use_tls: i16,
 
-    // /// certs dir
-    // #[argh(option, short = 'd')]
-    // cert_dir: Option<String>,
+    /// path to PEM encoded x509 ca-chain file
+    #[argh(option, short='R')]
+    ca_file: Option<String>,
+
+    /// path to PEM encoded x509 client cert file.
+    #[argh(option, short='C')]
+    client_cert: Option<String>,
+
+    /// path to PEM encoded client key file
+    #[argh(option, short='K')]
+    client_key: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -69,21 +78,26 @@ async fn main() {
     let payload_size = config.payload;
     let conns = config.connections;
     let server = config.server;
-    // let cert_dir = config.cert_dir;
-    // let tls = config.tls;
     let port  = config.port;
     let keep_alive = config.keep_alive;
     let inflight = config.inflight;
+    let tls = config.use_tls;
+    let ca_file = config.ca_file;
+    let client_cert = config.client_cert;
+    let client_key = config.client_key;
 
+    let mut handles = vec![];
     for i in 0..conns{
         let srv = server.to_string();
-        task::spawn(async move {
+        let cert = client_cert.to_owned();
+        let key = client_key.to_owned();
+        let chain = ca_file.to_owned();
+        handles.push(task::spawn(async move {
             let id = format!("mqtt-{}", i);
-            connection::start(&id, payload_size, count, srv, port, keep_alive, inflight).await;
-            //&conn_config.do_something().await;
-        });
+            connection::start(&id, payload_size, count, srv,
+                port, keep_alive, inflight, tls,
+                chain, cert, key).await;
+        }));
     }
-    
-
-    time::delay_for(Duration::from_secs(100)).await;
+    futures::future::join_all(handles).await;
 }
