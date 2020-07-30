@@ -82,7 +82,10 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
     let mut acks_elapsed_ms = 0;
 
     loop {
-        let res =  eventloop.poll().await.unwrap();
+        let res =  match eventloop.poll().await {
+            Ok(v) => v,
+            Err(e) => continue,
+        };
         let (inc, ouc) = res;
         println!("inc{:?}, out{:?}", inc, ouc);
         match inc {
