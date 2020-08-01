@@ -53,10 +53,11 @@ fn set_tls(mqttoptions: &mut MqttOptions, ca_file: Option<String>, client_file: 
 
 pub async fn start(id: &str, payload_size: usize, count: u16, server: String, port: u16,
         keep_alive: u16, inflight: u16, use_ssl: i16, ca_file: Option<String>,
-        client_cert: Option<String>, client_key: Option<String>) {
+        client_cert: Option<String>, client_key: Option<String>, conn_timeout:u64) {
     let mut mqttoptions = MqttOptions::new(id, server, port);
     mqttoptions.set_keep_alive(keep_alive);
     mqttoptions.set_inflight(inflight);
+    mqttoptions.set_conn_timeout(conn_timeout);
     
     match use_ssl {
         1 => set_tls(&mut mqttoptions, ca_file, client_cert, client_key, 1),  
