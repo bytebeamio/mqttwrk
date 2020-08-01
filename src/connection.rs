@@ -80,14 +80,24 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
 
     let start = Instant::now();
     let mut acks_elapsed_ms = 0;
+    let mut reconnects:i32 = 0;
+    let mut reconnect_threshold:i32 = 0;
 
     loop {
-        let res =  match eventloop.poll().await {
+        let res =  match eventloop.poll().await{
             Ok(v) => v,
-            Err(e) => continue,
+            Err(e) => {
+                reconnects = reconnects + 1;
+                reconnect_threshold += 1;
+                // 100 continous reconnect, break
+                if reconnect_threshold == 100 {
+                    break;
+                }
+                continue;
+            },
         };
-        let (inc, ouc) = res;
-        println!("inc{:?}, out{:?}", inc, ouc);
+        let (inc, _ouc) = res;
+        reconnect_threshold = 0;
         match inc {
             Some(v) => {
                 match v {
@@ -109,7 +119,7 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
                     },
                 }
             },
-            None => println!("No incoming"),
+            None => {},
         }
 
         if incoming.len() == 0 {
@@ -131,14 +141,16 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
     println!(
         "Id = {},
         Acks:     Missed = {:<5}, Received size = {}, Incoming Throughput = {} KB/s,
-        Incoming: Missed = {:<5}, Received size = {}, Incoming Throughput = {} KB/s",
+        Incoming: Missed = {:<5}, Received size = {}, Incoming Throughput = {} KB/s
+        Reconnects: {}",
         id,
         acks.len(),
         total_outgoing_size,
         acks_throughput_mbps,
         incoming.len(),
         total_incoming_size,
-        incoming_throughput_mbps
+        incoming_throughput_mbps,
+        reconnects,
     );
 }
 
