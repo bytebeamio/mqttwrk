@@ -46,7 +46,7 @@ struct Config {
 
     /// infligh_messages
     #[argh(option, short = 'q', default = "200")]
-    inflight: usize,
+    inflight: u16,
 
     /// tls, 0, 1, 2. 0 -> no tls, 1 -> server verification, 2-> mTLS
     #[argh(option, short ='t', default = "0")]
