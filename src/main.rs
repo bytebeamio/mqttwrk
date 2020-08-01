@@ -67,6 +67,10 @@ struct Config {
     /// connection_timeout
     #[argh(option, short='T', default="5")]
     conn_timeout: u64,
+
+    /// qos, default 1
+    #[argh(option, short='Q', default="1")]
+    qos: i16,
 }
 
 #[derive(Debug, Clone)]
@@ -90,6 +94,7 @@ async fn main() {
     let client_cert = config.client_cert;
     let client_key = config.client_key;
     let conn_timeout = config.conn_timeout;
+    let qos = config.qos;
 
     let mut handles = vec![];
     for i in 0..conns{
@@ -101,7 +106,8 @@ async fn main() {
             let id = format!("mqtt-{}", i);
             connection::start(&id, payload_size, count, srv,
                 port, keep_alive, inflight, tls,
-                chain, cert, key, conn_timeout).await;
+                chain, cert, key,
+                conn_timeout, qos).await;
         }));
     }
     futures::future::join_all(handles).await;
