@@ -84,11 +84,11 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
     loop {
         let res =  match eventloop.poll().await{
             Ok(v) => v,
-            Err(e) => {
+            Err(_e) => {
                 reconnects = reconnects + 1;
                 reconnect_threshold += 1;
-                // 100 continous reconnect, break
-                if reconnect_threshold == 100 {
+                // 1000 continous reconnect, break
+                if reconnect_threshold == 1000 {
                     break;
                 }
                 continue;
