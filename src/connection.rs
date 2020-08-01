@@ -156,6 +156,7 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
     );
 }
 
+/// make `count` amount of requests at specified QoS.
 async fn requests(id: &str, payload_size: usize, count: u16, requests_tx: Sender<Request>, qos: i16) {
     let topic = format!("hello/{}/world", id);
     let subscription = rumqttc::Subscribe::new(&topic, QoS::AtLeastOnce);
@@ -175,6 +176,7 @@ async fn requests(id: &str, payload_size: usize, count: u16, requests_tx: Sender
     time::delay_for(Duration::from_secs(5)).await;
 }
 
+/// create acklist
 fn acklist(count: u16) -> HashSet<u16> {
     let mut acks = HashSet::new();
     for i in 1..=count {
@@ -184,17 +186,20 @@ fn acklist(count: u16) -> HashSet<u16> {
     acks
 }
 
+/// generate payload of sepcified byte size.
 fn generate_payload(payload_size: usize) -> Vec<u8> {
     let mut rng = rand::thread_rng();
     let payload: Vec<u8> = (0..payload_size).map(|_| rng.gen_range(0, 255)).collect();
     payload
 }
 
+
+/// get QoS level. Default is AtLeastOnce.
 fn get_qos(qos: i16) -> QoS {
     match qos {
-        0=> QoS::AtLeastOnce,
-        1=> QoS::AtMostOnce,
+        0=> QoS::AtMostOnce,
+        1=> QoS::AtLeastOnce,
         2 => QoS::ExactlyOnce,
-        _=> QoS::AtMostOnce
+        _=> QoS::AtLeastOnce
     }
 }
