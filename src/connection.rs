@@ -8,9 +8,9 @@ use std::fs::File;
 use rand::Rng;
 use tokio::select;
 use tokio::stream::StreamExt;
-use tokio::sync::mpsc::{channel, Sender};
 use tokio::task;
 use tokio::time;
+use async_channel::Sender;
 
 use crate::Metrics;
 
@@ -52,12 +52,12 @@ fn set_tls(mqttoptions: &mut MqttOptions, ca_file: Option<String>, client_file: 
 }
 
 pub async fn start(id: &str, payload_size: usize, count: u16, server: String, port: u16,
-        keep_alive: u16, inflight: usize, use_ssl: i16, ca_file: Option<String>,
-        client_cert: Option<String>, client_key: Option<String>) {
-    let (requests_tx, requests_rx) = channel(10);
+        keep_alive: u16, inflight: u16, use_ssl: i16, ca_file: Option<String>,
+        client_cert: Option<String>, client_key: Option<String>, conn_timeout:u64) {
     let mut mqttoptions = MqttOptions::new(id, server, port);
     mqttoptions.set_keep_alive(keep_alive);
     mqttoptions.set_inflight(inflight);
+    mqttoptions.set_conn_timeout(conn_timeout);
     
     match use_ssl {
         1 => set_tls(&mut mqttoptions, ca_file, client_cert, client_key, 1),  
@@ -65,7 +65,8 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
         _ => {},
     };
 
-    let mut eventloop = EventLoop::new(mqttoptions, requests_rx).await;
+    let mut eventloop = EventLoop::new(mqttoptions, 10).await;
+    let requests_tx = eventloop.handle();
 
     let client_id = id.to_owned();
     task::spawn(async move {
@@ -101,12 +102,12 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
         match inc {
             Some(v) => {
                 match v {
-                    Incoming::Puback(pkid) => {
+                    Incoming::PubAck(pkid) => {
                         acks.remove(&pkid.pkid);
                         acks_elapsed_ms = start.elapsed().as_millis();
                         continue;
                     },
-                    Incoming::Suback(suback)=> {
+                    Incoming::SubAck(suback)=> {
                         acks.remove(&suback.pkid);
                     },
                     Incoming::Publish(publish) => {
@@ -154,7 +155,7 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
     );
 }
 
-async fn requests(id: &str, payload_size: usize, count: u16, mut requests_tx: Sender<Request>) {
+async fn requests(id: &str, payload_size: usize, count: u16, requests_tx: Sender<Request>) {
     let topic = format!("hello/{}/world", id);
     let subscription = rumqttc::Subscribe::new(&topic, QoS::AtLeastOnce);
     let _ = requests_tx.send(Request::Subscribe(subscription)).await;
