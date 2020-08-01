@@ -161,7 +161,8 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
     );
 }
 
-/// make `count` amount of requests at specified QoS.
+/// make `count` amount of requests at specified QoS for num_pubs publishers.
+/// Total number of messages published = num_pubs*count
 async fn requests(topic: String, payload_size: usize, count: u16, requests_tx: Sender<Request>, qos: QoS, num_pubs: i16, num_subs: i16) {
 
     for _ in 0..num_pubs {
@@ -179,7 +180,7 @@ async fn requests(topic: String, payload_size: usize, count: u16, requests_tx: S
     time::delay_for(Duration::from_secs(5)).await;
 }
 
-/// create num_subs subscription for a topic.
+/// create num_subs subscriptions for a topic.
 async fn subscribe(topic: String, requests_tx: Sender<Request>, num_subs: i16, qos:QoS) {
     for _ in 0..num_subs{
         let subscription = rumqttc::Subscribe::new(&topic, qos);
