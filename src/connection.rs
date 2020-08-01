@@ -52,7 +52,7 @@ fn set_tls(mqttoptions: &mut MqttOptions, ca_file: Option<String>, client_file: 
 pub async fn start(id: &str, payload_size: usize, count: u16, server: String, port: u16,
         keep_alive: u16, inflight: u16, use_ssl: i16, ca_file: Option<String>,
         client_cert: Option<String>, client_key: Option<String>, conn_timeout:u64,
-        qos: i16) {
+        qos: i16, num_pubs: i16, num_subs: i16) {
     let mut mqttoptions = MqttOptions::new(id, server, port);
     mqttoptions.set_keep_alive(keep_alive);
     mqttoptions.set_inflight(inflight);
@@ -67,9 +67,15 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
     let mut eventloop = EventLoop::new(mqttoptions, 10).await;
     let requests_tx = eventloop.handle();
 
-    let client_id = id.to_owned();
+    let topic = format!("Hellp/{}/World", id);
+    let qos = get_qos(qos);
+
+    // subscribe(topic_sub, requests_tx.clone(), num_subs, qos).await;
+    // lets wait for subscriptions to be over.
+
+    // schedule tasks for to publish
     task::spawn(async move {
-        requests(&client_id, payload_size, count, requests_tx, qos).await;
+        requests(topic, payload_size, count, requests_tx, qos, num_pubs, num_subs).await;
     });
 
     let mut acks = acklist(count);
@@ -154,25 +160,45 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
     );
 }
 
-/// make `count` amount of requests at specified QoS.
-async fn requests(id: &str, payload_size: usize, count: u16, requests_tx: Sender<Request>, qos: i16) {
-    let topic = format!("hello/{}/world", id);
-    let subscription = rumqttc::Subscribe::new(&topic, QoS::AtLeastOnce);
-    let _ = requests_tx.send(Request::Subscribe(subscription)).await;
-    let publish_level = get_qos(qos);
-
-    for i in 0..count {
-        let mut payload = generate_payload(payload_size);
-        payload[0] = (i % 255) as u8;
-        let publish = rumqttc::Publish::new(&topic, publish_level, payload);
-        let publish = Request::Publish(publish);
-        if let Err(_) = requests_tx.send(publish).await {
+/// make `count` amount of requests at specified QoS for num_pubs publishers.
+/// Total number of messages published = num_pubs*count
+/// Create num_subs subscribers for the topic. We could have separate routine for subscribers
+/// but that would add no benefit as we want subscribers to be set up before we start publising.
+async fn requests(topic: String, payload_size: usize, count: u16, requests_tx: Sender<Request>, qos: QoS, num_pubs: i16, num_subs: i16) {
+    for _ in 0..num_subs{
+        let subscription = rumqttc::Subscribe::new(&topic, qos);
+        if let Err(_) = requests_tx.send(Request::Subscribe(subscription)).await {
             break;
+        }
+    }
+
+    for _ in 0..num_pubs {
+        for i in 0..count {
+            let mut payload = generate_payload(payload_size);
+            payload[0] = (i % 255) as u8;
+            let publish = rumqttc::Publish::new(&topic, qos, payload);
+            let publish = Request::Publish(publish);
+            if let Err(_) = requests_tx.send(publish).await {
+                break;
+            }
         }
     }
 
     time::delay_for(Duration::from_secs(5)).await;
 }
+
+// /// create num_subs subscriptions for a topic.
+// async fn subscribe(topic: String, requests_tx: Sender<Request>, num_subs: i16, qos:QoS) {
+    
+//     for _ in 0..num_subs{
+//         let subscription = rumqttc::Subscribe::new(&topic, qos);
+//         if let Err(_) = requests_tx.send(Request::Subscribe(subscription)).await {
+//             break;
+//         }
+//     }
+//     // we are gonna wait a bit here
+//     time::delay_for(Duration::from_secs(3)).await;
+// }
 
 /// create acklist
 fn acklist(count: u16) -> HashSet<u16> {
