@@ -72,11 +72,11 @@ struct Config {
     #[argh(option, short='Q', default="1")]
     qos: i16,
 
-    /// number of publishers
+    /// number of publishers, default 1
     #[argh(option, short='n', default="1")]
     publishers: i16,
 
-    /// number of subscribers
+    /// number of subscribers, default 1
     #[argh(option, short='m', default="1")]
     subscribers: i16,
 }
