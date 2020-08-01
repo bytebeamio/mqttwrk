@@ -6,8 +6,6 @@ use std::io::prelude::*;
 use std::fs::File;
 
 use rand::Rng;
-use tokio::select;
-use tokio::stream::StreamExt;
 use tokio::task;
 use tokio::time;
 use async_channel::Sender;
@@ -53,7 +51,8 @@ fn set_tls(mqttoptions: &mut MqttOptions, ca_file: Option<String>, client_file: 
 
 pub async fn start(id: &str, payload_size: usize, count: u16, server: String, port: u16,
         keep_alive: u16, inflight: u16, use_ssl: i16, ca_file: Option<String>,
-        client_cert: Option<String>, client_key: Option<String>, conn_timeout:u64) {
+        client_cert: Option<String>, client_key: Option<String>, conn_timeout:u64,
+        qos: i16) {
     let mut mqttoptions = MqttOptions::new(id, server, port);
     mqttoptions.set_keep_alive(keep_alive);
     mqttoptions.set_inflight(inflight);
@@ -70,7 +69,7 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
 
     let client_id = id.to_owned();
     task::spawn(async move {
-        requests(&client_id, payload_size, count, requests_tx).await;
+        requests(&client_id, payload_size, count, requests_tx, qos).await;
     });
 
     let mut acks = acklist(count);
@@ -155,15 +154,17 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
     );
 }
 
-async fn requests(id: &str, payload_size: usize, count: u16, requests_tx: Sender<Request>) {
+/// make `count` amount of requests at specified QoS.
+async fn requests(id: &str, payload_size: usize, count: u16, requests_tx: Sender<Request>, qos: i16) {
     let topic = format!("hello/{}/world", id);
     let subscription = rumqttc::Subscribe::new(&topic, QoS::AtLeastOnce);
     let _ = requests_tx.send(Request::Subscribe(subscription)).await;
+    let publish_level = get_qos(qos);
 
     for i in 0..count {
         let mut payload = generate_payload(payload_size);
         payload[0] = (i % 255) as u8;
-        let publish = rumqttc::Publish::new(&topic, QoS::AtLeastOnce, payload);
+        let publish = rumqttc::Publish::new(&topic, publish_level, payload);
         let publish = Request::Publish(publish);
         if let Err(_) = requests_tx.send(publish).await {
             break;
@@ -173,6 +174,7 @@ async fn requests(id: &str, payload_size: usize, count: u16, requests_tx: Sender
     time::delay_for(Duration::from_secs(5)).await;
 }
 
+/// create acklist
 fn acklist(count: u16) -> HashSet<u16> {
     let mut acks = HashSet::new();
     for i in 1..=count {
@@ -182,8 +184,20 @@ fn acklist(count: u16) -> HashSet<u16> {
     acks
 }
 
+/// generate payload of sepcified byte size.
 fn generate_payload(payload_size: usize) -> Vec<u8> {
     let mut rng = rand::thread_rng();
     let payload: Vec<u8> = (0..payload_size).map(|_| rng.gen_range(0, 255)).collect();
     payload
+}
+
+
+/// get QoS level. Default is AtLeastOnce.
+fn get_qos(qos: i16) -> QoS {
+    match qos {
+        0=> QoS::AtMostOnce,
+        1=> QoS::AtLeastOnce,
+        2 => QoS::ExactlyOnce,
+        _=> QoS::AtLeastOnce
+    }
 }
