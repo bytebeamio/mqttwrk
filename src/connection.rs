@@ -70,13 +70,24 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
     let topic = format!("Hellp/{}/World", id);
     let qos = get_qos(qos);
 
-    // subscribe(topic_sub, requests_tx.clone(), num_subs, qos).await;
+    // subscribe
+    for _ in 0..num_subs {
+        let t = topic.to_string();
+        let rx = requests_tx.clone();
+        task::spawn(async move {
+            subscribe(t, rx, num_subs, qos).await;
+        });
+    }
     // lets wait for subscriptions to be over.
 
     // schedule tasks for to publish
-    task::spawn(async move {
-        requests(topic, payload_size, count, requests_tx, qos, num_pubs, num_subs).await;
-    });
+    for _ in 0..num_pubs {
+        let t = topic.to_string();
+        let rx = requests_tx.clone();
+        task::spawn(async move {
+            requests(t, payload_size, count, rx, qos, num_pubs, num_subs).await;
+        });
+    }
 
     let mut acks = acklist(count);
     let mut incoming = acklist(count);
@@ -104,6 +115,7 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
         };
         let (inc, _ouc) = res;
         reconnect_threshold = 0;
+        println!("INC{:?}, OUC{:?}", inc, _ouc);
         match inc {
             Some(v) => {
                 match v {
@@ -117,6 +129,7 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
                     },
                     Incoming::Publish(publish) => {
                         data.progress = publish.pkid;
+                        println!("============{:?}=======", publish.pkid);
                         incoming.remove(&publish.pkid);
                     },
                     v => {
@@ -128,6 +141,7 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
             None => {},
         }
 
+        println!("LEN={:?}", incoming.len());
         if incoming.len() == 0 {
             break;
         }
@@ -171,12 +185,13 @@ async fn requests(topic: String, payload_size: usize, count: u16, requests_tx: S
             break;
         }
     }
+    println!("{:?}", qos);
 
     for _ in 0..num_pubs {
         for i in 0..count {
             let mut payload = generate_payload(payload_size);
             payload[0] = (i % 255) as u8;
-            let publish = rumqttc::Publish::new(&topic, qos, payload);
+            let publish = rumqttc::Publish::new(&topic, QoS::AtLeastOnce, payload);
             let publish = Request::Publish(publish);
             if let Err(_) = requests_tx.send(publish).await {
                 break;
@@ -187,18 +202,13 @@ async fn requests(topic: String, payload_size: usize, count: u16, requests_tx: S
     time::delay_for(Duration::from_secs(5)).await;
 }
 
-// /// create num_subs subscriptions for a topic.
-// async fn subscribe(topic: String, requests_tx: Sender<Request>, num_subs: i16, qos:QoS) {
-    
-//     for _ in 0..num_subs{
-//         let subscription = rumqttc::Subscribe::new(&topic, qos);
-//         if let Err(_) = requests_tx.send(Request::Subscribe(subscription)).await {
-//             break;
-//         }
-//     }
-//     // we are gonna wait a bit here
-//     time::delay_for(Duration::from_secs(3)).await;
-// }
+/// create num_subs subscriptions for a topic.
+async fn subscribe(topic: String, requests_tx: Sender<Request>, num_subs: i16, qos:QoS) {
+    let subscription = rumqttc::Subscribe::new(&topic, qos);
+    requests_tx.send(Request::Subscribe(subscription)).await;
+    // we are gonna wait a bit here
+    time::delay_for(Duration::from_secs(3)).await;
+}
 
 /// create acklist
 fn acklist(count: u16) -> HashSet<u16> {
