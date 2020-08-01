@@ -63,6 +63,10 @@ struct Config {
     /// path to PEM encoded client key file
     #[argh(option, short='K')]
     client_key: Option<String>,
+
+    /// connection_timeout
+    #[argh(option, short='T', default="5")]
+    conn_timeout: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +89,7 @@ async fn main() {
     let ca_file = config.ca_file;
     let client_cert = config.client_cert;
     let client_key = config.client_key;
+    let conn_timeout = config.conn_timeout;
 
     let mut handles = vec![];
     for i in 0..conns{
@@ -96,7 +101,7 @@ async fn main() {
             let id = format!("mqtt-{}", i);
             connection::start(&id, payload_size, count, srv,
                 port, keep_alive, inflight, tls,
-                chain, cert, key).await;
+                chain, cert, key, conn_timeout).await;
         }));
     }
     futures::future::join_all(handles).await;
