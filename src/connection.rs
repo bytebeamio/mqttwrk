@@ -115,7 +115,6 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
         };
         let (inc, _ouc) = res;
         reconnect_threshold = 0;
-        println!("INC{:?}, OUC{:?}", inc, _ouc);
         match inc {
             Some(v) => {
                 match v {
@@ -140,8 +139,6 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
             },
             None => {},
         }
-
-        println!("LEN={:?}", incoming.len());
         if incoming.len() == 0 {
             break;
         }
@@ -193,8 +190,6 @@ async fn requests(topic: String, payload_size: usize, count: u16, requests_tx: S
 async fn subscribe(topic: String, requests_tx: Sender<Request>, qos:QoS) {
     let subscription = rumqttc::Subscribe::new(&topic, qos);
     requests_tx.send(Request::Subscribe(subscription)).await;
-    // we are gonna wait a bit here
-    time::delay_for(Duration::from_secs(3)).await;
 }
 
 /// create acklist
