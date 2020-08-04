@@ -71,6 +71,14 @@ struct Config {
     /// qos, default 1
     #[argh(option, short='Q', default="1")]
     qos: i16,
+
+    /// number of publishers, default 1
+    #[argh(option, short='n', default="1")]
+    publishers: i16,
+
+    /// number of subscribers, default 1
+    #[argh(option, short='m', default="1")]
+    subscribers: i16,
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +103,8 @@ async fn main() {
     let client_key = config.client_key;
     let conn_timeout = config.conn_timeout;
     let qos = config.qos;
+    let num_pubs = config.publishers;
+    let num_subs = config.subscribers;
 
     let mut handles = vec![];
     for i in 0..conns{
@@ -107,7 +117,7 @@ async fn main() {
             connection::start(&id, payload_size, count, srv,
                 port, keep_alive, inflight, tls,
                 chain, cert, key,
-                conn_timeout, qos).await;
+                conn_timeout, qos, num_pubs, num_subs).await;
         }));
     }
     futures::future::join_all(handles).await;

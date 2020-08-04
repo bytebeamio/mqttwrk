@@ -52,7 +52,7 @@ fn set_tls(mqttoptions: &mut MqttOptions, ca_file: Option<String>, client_file: 
 pub async fn start(id: &str, payload_size: usize, count: u16, server: String, port: u16,
         keep_alive: u16, inflight: u16, use_ssl: i16, ca_file: Option<String>,
         client_cert: Option<String>, client_key: Option<String>, conn_timeout:u64,
-        qos: i16) {
+        qos: i16, num_pubs: i16, num_subs: i16) {
     let mut mqttoptions = MqttOptions::new(id, server, port);
     mqttoptions.set_keep_alive(keep_alive);
     mqttoptions.set_inflight(inflight);
@@ -67,10 +67,27 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
     let mut eventloop = EventLoop::new(mqttoptions, 10).await;
     let requests_tx = eventloop.handle();
 
-    let client_id = id.to_owned();
-    task::spawn(async move {
-        requests(&client_id, payload_size, count, requests_tx, qos).await;
-    });
+    let topic = format!("Hellp/{}/World", id);
+    let qos = get_qos(qos);
+
+    // subscribe
+    for _ in 0..num_subs {
+        let t = topic.to_string();
+        let rx = requests_tx.clone();
+        task::spawn(async move {
+            subscribe(t, rx, qos).await;
+        });
+    }
+    // Should we join here?
+
+    // schedule tasks for to publish
+    for _ in 0..num_pubs {
+        let t = topic.to_string();
+        let rx = requests_tx.clone();
+        task::spawn(async move {
+            requests(t, payload_size, count, rx, qos).await;
+        });
+    }
 
     let mut acks = acklist(count);
     let mut incoming = acklist(count);
@@ -114,14 +131,12 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
                         incoming.remove(&publish.pkid);
                     },
                     v => {
-                        println!("Incoming={:?}", v);
                         continue;
                     },
                 }
             },
             None => {},
         }
-
         if incoming.len() == 0 {
             break;
         }
@@ -154,24 +169,25 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
     );
 }
 
-/// make `count` amount of requests at specified QoS.
-async fn requests(id: &str, payload_size: usize, count: u16, requests_tx: Sender<Request>, qos: i16) {
-    let topic = format!("hello/{}/world", id);
-    let subscription = rumqttc::Subscribe::new(&topic, QoS::AtLeastOnce);
-    let _ = requests_tx.send(Request::Subscribe(subscription)).await;
-    let publish_level = get_qos(qos);
+/// make count number of requests at specified QoS.
+async fn requests(topic: String, payload_size: usize, count: u16, requests_tx: Sender<Request>, qos: QoS) {
 
     for i in 0..count {
         let mut payload = generate_payload(payload_size);
         payload[0] = (i % 255) as u8;
-        let publish = rumqttc::Publish::new(&topic, publish_level, payload);
+        let publish = rumqttc::Publish::new(&topic, QoS::AtLeastOnce, payload);
         let publish = Request::Publish(publish);
         if let Err(_) = requests_tx.send(publish).await {
             break;
         }
     }
-
     time::delay_for(Duration::from_secs(5)).await;
+}
+
+/// create subscriptions for a topic.
+async fn subscribe(topic: String, requests_tx: Sender<Request>, qos:QoS) {
+    let subscription = rumqttc::Subscribe::new(&topic, qos);
+    requests_tx.send(Request::Subscribe(subscription)).await;
 }
 
 /// create acklist
