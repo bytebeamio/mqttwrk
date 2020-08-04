@@ -128,11 +128,9 @@ pub async fn start(id: &str, payload_size: usize, count: u16, server: String, po
                     },
                     Incoming::Publish(publish) => {
                         data.progress = publish.pkid;
-                        println!("============{:?}=======", publish.pkid);
                         incoming.remove(&publish.pkid);
                     },
                     v => {
-                        println!("Incoming={:?}", v);
                         continue;
                     },
                 }
