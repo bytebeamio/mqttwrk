@@ -7,13 +7,14 @@
 //! - Spawn n clinets with publishes and 1 subscription to pull all the data (used to simulate a sink in the cloud)
 //! - Offline messaging
 //! - Halfopen connection detection
+//!
+#[macro_use]
+extern crate log;
 
 use futures;
 use argh::FromArgs;
 use tokio::task;
-use tokio::time;
-
-use std::time::Duration;
+use std::sync::Arc;
 
 mod connection;
 
@@ -26,7 +27,7 @@ struct Config {
 
     /// size of payload
     #[argh(option, short = 'p', default = "1024")]
-    payload: usize,
+    payload_size: usize,
 
     /// number of messages
     #[argh(option, short = 'n', default = "10000")]
@@ -38,46 +39,42 @@ struct Config {
 
     /// port
     #[argh(option, short = 'P', default = "8883")]
-    port : u16,
+    port: u16,
 
-    /// keep_alive
-    #[argh(option, short = 'k', default = "5")]
+    /// keep alive
+    #[argh(option, short = 'k', default = "10")]
     keep_alive: u16,
 
-    /// infligh_messages
+    /// max inflight messages
     #[argh(option, short = 'q', default = "200")]
-    inflight: u16,
-
-    /// tls, 0, 1, 2. 0 -> no tls, 1 -> server verification, 2-> mTLS
-    #[argh(option, short ='t', default = "0")]
-    use_tls: i16,
+    max_inflight: u16,
 
     /// path to PEM encoded x509 ca-chain file
-    #[argh(option, short='R')]
+    #[argh(option, short = 'R')]
     ca_file: Option<String>,
 
     /// path to PEM encoded x509 client cert file.
-    #[argh(option, short='C')]
+    #[argh(option, short = 'C')]
     client_cert: Option<String>,
 
     /// path to PEM encoded client key file
-    #[argh(option, short='K')]
+    #[argh(option, short = 'K')]
     client_key: Option<String>,
 
     /// connection_timeout
-    #[argh(option, short='T', default="5")]
+    #[argh(option, short = 'T', default = "5")]
     conn_timeout: u64,
 
     /// qos, default 1
-    #[argh(option, short='Q', default="1")]
+    #[argh(option, short = 'Q', default = "1")]
     qos: i16,
 
     /// number of publishers, default 1
-    #[argh(option, short='n', default="1")]
+    #[argh(option, short = 'n', default = "1")]
     publishers: i16,
 
     /// number of subscribers, default 1
-    #[argh(option, short='m', default="1")]
+    #[argh(option, short = 'm', default = "1")]
     subscribers: i16,
 }
 
@@ -90,35 +87,18 @@ pub struct Metrics {
 async fn main() {
     pretty_env_logger::init();
     let config: Config = argh::from_env();
-    let count = config.count;
-    let payload_size = config.payload;
-    let conns = config.connections;
-    let server = config.server;
-    let port  = config.port;
-    let keep_alive = config.keep_alive;
-    let inflight = config.inflight;
-    let tls = config.use_tls;
-    let ca_file = config.ca_file;
-    let client_cert = config.client_cert;
-    let client_key = config.client_key;
-    let conn_timeout = config.conn_timeout;
-    let qos = config.qos;
-    let num_pubs = config.publishers;
-    let num_subs = config.subscribers;
-
     let mut handles = vec![];
-    for i in 0..conns{
-        let srv = server.to_string();
-        let cert = client_cert.to_owned();
-        let key = client_key.to_owned();
-        let chain = ca_file.to_owned();
+
+    let connections = config.connections;
+    let config = Arc::new(config);
+    for i in 0..connections {
+        let config = config.clone();
         handles.push(task::spawn(async move {
             let id = format!("mqtt-{}", i);
-            connection::start(&id, payload_size, count, srv,
-                port, keep_alive, inflight, tls,
-                chain, cert, key,
-                conn_timeout, qos, num_pubs, num_subs).await;
+            let mut connection = connection::Connection::new(id, config) ;
+            connection.start().await;
         }));
     }
+
     futures::future::join_all(handles).await;
 }

@@ -10,8 +10,9 @@ edition = "2018"
 [dependencies]
 rumqttc = {git="https://github.com/bytebeamio/rumqtt.git", branch="master"}
 tokio = { version = "0.2", features = ["full"] }
-pretty_env_logger = "0.4"
 rand = "0.7"
 argh = "0.1"
 futures = "0.3"
 async-channel = "1"
+log = "0.4"
+pretty_env_logger = "0.4"
