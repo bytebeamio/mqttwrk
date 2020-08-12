@@ -8,6 +8,10 @@
 //! - Offline messaging
 //! - Halfopen connection detection
 //!
+
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 #[macro_use]
 extern crate log;
 
@@ -26,19 +30,19 @@ struct Config {
     connections: usize,
 
     /// size of payload
-    #[argh(option, short = 'p', default = "1024")]
+    #[argh(option, short = 'm', default = "100")]
     payload_size: usize,
 
     /// number of messages
-    #[argh(option, short = 'n', default = "10000")]
-    count: u16,
+    #[argh(option, short = 'n', default = "1_000_000")]
+    count: usize,
 
     /// server
-    #[argh(option, short = 's', default = "String::from(\"localhost\")")]
+    #[argh(option, short = 'h', default = "String::from(\"localhost\")")]
     server: String,
 
     /// port
-    #[argh(option, short = 'P', default = "8883")]
+    #[argh(option, short = 'p', default = "1883")]
     port: u16,
 
     /// keep alive
@@ -46,7 +50,7 @@ struct Config {
     keep_alive: u16,
 
     /// max inflight messages
-    #[argh(option, short = 'q', default = "200")]
+    #[argh(option, short = 'i', default = "100")]
     max_inflight: u16,
 
     /// path to PEM encoded x509 ca-chain file
@@ -62,20 +66,20 @@ struct Config {
     client_key: Option<String>,
 
     /// connection_timeout
-    #[argh(option, short = 'T', default = "5")]
+    #[argh(option, short = 't', default = "5")]
     conn_timeout: u64,
 
     /// qos, default 1
-    #[argh(option, short = 'Q', default = "1")]
+    #[argh(option, short = 'q', default = "1")]
     qos: i16,
 
     /// number of publishers, default 1
-    #[argh(option, short = 'n', default = "1")]
-    publishers: i16,
+    #[argh(option, short = 'x', default = "1")]
+    publishers: usize,
 
     /// number of subscribers, default 1
-    #[argh(option, short = 'm', default = "1")]
-    subscribers: i16,
+    #[argh(option, short = 'y', default = "1")]
+    subscribers: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -83,9 +87,10 @@ pub struct Metrics {
     progress: u16,
 }
 
-#[tokio::main(core_threads = 4)]
+#[tokio::main(core_threads = 2)]
 async fn main() {
     pretty_env_logger::init();
+
     let config: Config = argh::from_env();
     let mut handles = vec![];
 
