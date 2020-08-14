@@ -2,7 +2,7 @@ use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Publish, Subscribe
 use std::time::Instant;
 use std::fs;
 
-use tokio::task;
+use tokio::{task, time};
 use async_channel::Sender;
 
 use crate::Config;
@@ -50,6 +50,7 @@ impl Connection {
         let count = self.config.count;
         let publishers = self.config.publishers;
         let subscribers = self.config.subscribers;
+        let delay = self.config.delay;
 
         task::spawn(async move {
             // subscribes
@@ -63,7 +64,7 @@ impl Connection {
                 let topic = format!("hello/{}/world", i);
                 let rx = requests_tx.clone();
                 task::spawn(async move {
-                    requests(topic, payload_size, count, rx, qos).await;
+                    requests(topic, payload_size, count, rx, qos, delay).await;
                 });
             }
         });
@@ -142,8 +143,9 @@ impl Connection {
 
 
 /// make count number of requests at specified QoS.
-async fn requests(topic: String, payload_size: usize, count: usize, requests_tx: Sender<Request>, qos: QoS) {
+async fn requests(topic: String, payload_size: usize, count: usize, requests_tx: Sender<Request>, qos: QoS, delay: u64) {
     let payloads = generate_payloads(count, payload_size);
+    let mut interval = time::interval(time::Duration::from_secs(delay));
     for payload in payloads {
         // let mut payload = vec![0; payload_size];
         // payload[0] = (i % 255) as u8;
@@ -152,6 +154,7 @@ async fn requests(topic: String, payload_size: usize, count: usize, requests_tx:
 
         let publish = PublishRaw::new(&topic, qos, payload).unwrap();
         let publish = Request::PublishRaw(publish);
+        interval.tick().await;
         requests_tx.send(publish).await.unwrap();
     }
 }
