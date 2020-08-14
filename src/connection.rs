@@ -155,7 +155,13 @@ async fn requests(topic: String, payload_size: usize, count: usize, requests_tx:
         let publish = PublishRaw::new(&topic, qos, payload).unwrap();
         let publish = Request::PublishRaw(publish);
         interval.tick().await;
-        requests_tx.send(publish).await.unwrap();
+        match requests_tx.send(publish).await {
+            Ok(v) => {},
+            Err(e) => {
+                error!("Error in sending={:?}", e);
+                break;
+            }
+        };
     }
 }
 
