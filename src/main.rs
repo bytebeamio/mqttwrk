@@ -80,6 +80,10 @@ struct Config {
     /// number of subscribers, default 1
     #[argh(option, short = 'y', default = "1")]
     subscribers: usize,
+
+    /// delay in between each request in secs
+    #[argh(option, short = 'd', default = "0")]
+    delay: u64,
 }
 
 #[derive(Debug, Clone)]
