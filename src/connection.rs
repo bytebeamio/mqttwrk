@@ -72,9 +72,6 @@ impl Connection {
             }
         });
 
-
-
-
         let start = Instant::now();
         let mut acks_count = 0;
         let mut incoming_count = 0;
@@ -130,13 +127,12 @@ impl Connection {
                 incoming_done = true;
             }
 
-            if outgoing_done {
+            if incoming_done && outgoing_done {
                 break
             }
         }
 
-        // let incoming_throughput = incoming_count * 1000 / incoming_elapsed.as_millis() as usize;
-        let incoming_throughput = 0;
+        let incoming_throughput = (incoming_count * 1000) as f32 / incoming_elapsed.as_millis() as f32;
         let outgoing_throughput = (acks_count * 1000) as f32 / outgoing_elapsed.as_millis() as f32;
 
         println!(
@@ -157,21 +153,31 @@ impl Connection {
 
 /// make count number of requests at specified QoS.
 async fn requests(topic: String, payload_size: usize, count: usize, requests_tx: Sender<Request>, qos: QoS, delay: u64) {
-    let mut interval = match delay {
-        0 => None,
-        delay => Some(time::interval(time::Duration::from_secs(delay)))
+    match delay {
+        0 => {
+            for _i in 0..count {
+                let publish = create_publish(&topic, payload_size, qos);
+                requests_tx.send(publish).await.unwrap();
+            }
+        },
+        _ => {
+            let mut interval = time::interval(time::Duration::from_secs(delay));
+            for _i in 0..count {
+                let publish = create_publish(&topic, payload_size, qos);
+                requests_tx.send(publish).await.unwrap();
+                interval.tick().await;
+                
+            }
+        },
     };
+}
 
-    for _i in 0..count {
-        let payload = vec![0; payload_size];
-        // payload[0] = (i % 255) as u8;
-        let publish = PublishRaw::new(&topic, qos, payload).unwrap();
-        let publish = Request::PublishRaw(publish);
-        if let Some(interval) = &mut interval {
-            interval.tick().await;
-        }
-        requests_tx.send(publish).await.unwrap();
-    }
+/// create Request
+fn create_publish(topic: &str, payload_size: usize, qos:QoS) -> Request {
+    let payload = vec![0; payload_size];
+    let publish = PublishRaw::new(topic, qos, payload).unwrap();
+    let publish = Request::PublishRaw(publish);
+    publish
 }
 
 /// create subscriptions for a topic.
