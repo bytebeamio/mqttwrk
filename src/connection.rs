@@ -127,13 +127,12 @@ impl Connection {
                 incoming_done = true;
             }
 
-            if outgoing_done {
+            if incoming_done && outgoing_done {
                 break
             }
         }
 
-        // let incoming_throughput = incoming_count * 1000 / incoming_elapsed.as_millis() as usize;
-        let incoming_throughput = 0;
+        let incoming_throughput = (incoming_count * 1000) as f32 / incoming_elapsed.as_millis() as f32;
         let outgoing_throughput = (acks_count * 1000) as f32 / outgoing_elapsed.as_millis() as f32;
 
         println!(
