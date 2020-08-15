@@ -1,4 +1,4 @@
-use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Publish, Subscribe, PublishRaw};
+use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw};
 use std::time::Instant;
 use std::fs;
 
@@ -7,6 +7,7 @@ use async_channel::Sender;
 
 use crate::Config;
 use std::sync::Arc;
+use tokio::time::Duration;
 
 pub(crate) struct Connection {
     id: String,
@@ -60,6 +61,8 @@ impl Connection {
                 subscribe(topic, rx, qos).await;
             }
 
+            time::delay_for(Duration::from_secs(1)).await;
+
             for i in 0..publishers {
                 let topic = format!("hello/{}/world", i);
                 let rx = requests_tx.clone();
@@ -75,8 +78,12 @@ impl Connection {
         let start = Instant::now();
         let mut acks_count = 0;
         let mut incoming_count = 0;
-        let incoming_expected = self.config.count * self.config.publishers * self.config.subscribers;
         let acks_expected = self.config.count * self.config.publishers;
+        let incoming_expected = self.config.count * self.config.publishers * self.config.subscribers;
+        let mut outgoing_elapsed = Duration::from_secs(0);
+        let mut incoming_elapsed = Duration::from_secs(0);
+        let mut outgoing_done = false;
+        let mut incoming_done = false;
 
         let mut reconnects: i32 = 0;
         loop {
@@ -113,28 +120,34 @@ impl Connection {
                 None => {}
             }
 
-            if incoming_count >= incoming_expected && acks_count >= acks_expected {
-                break;
+            if acks_count >= acks_expected {
+                outgoing_elapsed = start.elapsed();
+                outgoing_done = true;
+            }
+
+            if incoming_count >= incoming_expected  {
+                incoming_elapsed = start.elapsed();
+                incoming_done = true;
+            }
+
+            if outgoing_done {
+                break
             }
         }
 
-        let total_incoming_size = self.config.payload_size * incoming_count as usize;
-        let incoming_throughput = incoming_count * 1000 / start.elapsed().as_millis() as usize;
-
-        let total_outgoing_size = self.config.payload_size * acks_count as usize;
-        let acks_throughput = acks_count * 1000 / start.elapsed().as_millis() as usize;
+        // let incoming_throughput = incoming_count * 1000 / incoming_elapsed.as_millis() as usize;
+        let incoming_throughput = 0;
+        let outgoing_throughput = (acks_count * 1000) as f32 / outgoing_elapsed.as_millis() as f32;
 
         println!(
             "Id = {},
-            Acks       : Received = {:<9}, Received size = {:<9}, Incoming Throughput = {} messages/s,
-            Incoming   : Received = {:<9}, Received size = {:<9}, Incoming Throughput = {} messages/s
-            Reconnects : {}",
+            Outgoing publishes : Received = {:<7} Throughput = {} messages/s,
+            Incoming publishes : Received = {:<7} Throughput = {} messages/s
+            Reconnects         : {}",
             self.id,
             acks_count,
-            total_outgoing_size,
-            acks_throughput,
+            outgoing_throughput,
             incoming_count,
-            total_incoming_size,
             incoming_throughput,
             reconnects,
         );
@@ -144,17 +157,19 @@ impl Connection {
 
 /// make count number of requests at specified QoS.
 async fn requests(topic: String, payload_size: usize, count: usize, requests_tx: Sender<Request>, qos: QoS, delay: u64) {
-    let payloads = generate_payloads(count, payload_size);
-    let mut interval = time::interval(time::Duration::from_secs(delay));
-    for payload in payloads {
-        // let mut payload = vec![0; payload_size];
-        // payload[0] = (i % 255) as u8;
-        // let publish = Publish::new(&topic, qos, payload);
-        // let publish = Request::Publish(publish);
+    let mut interval = match delay {
+        0 => None,
+        delay => Some(time::interval(time::Duration::from_secs(delay)))
+    };
 
+    for _i in 0..count {
+        let payload = vec![0; payload_size];
+        // payload[0] = (i % 255) as u8;
         let publish = PublishRaw::new(&topic, qos, payload).unwrap();
         let publish = Request::PublishRaw(publish);
-        interval.tick().await;
+        if let Some(interval) = &mut interval {
+            interval.tick().await;
+        }
         requests_tx.send(publish).await.unwrap();
     }
 }
@@ -175,6 +190,3 @@ fn get_qos(qos: i16) -> QoS {
     }
 }
 
-fn generate_payloads(count: usize, payload_size: usize) -> Vec<Vec<u8>> {
-    vec![vec![1; payload_size]; count]
-}
