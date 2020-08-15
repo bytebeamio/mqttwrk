@@ -72,9 +72,6 @@ impl Connection {
             }
         });
 
-
-
-
         let start = Instant::now();
         let mut acks_count = 0;
         let mut incoming_count = 0;
@@ -160,23 +157,28 @@ async fn requests(topic: String, payload_size: usize, count: usize, requests_tx:
     match delay {
         0 => {
             for _i in 0..count {
-                let payload = vec![0; payload_size];
-                let publish = PublishRaw::new(&topic, qos, payload).unwrap();
-                let publish = Request::PublishRaw(publish);
+                let publish = create_publish(&topic, payload_size, qos);
                 requests_tx.send(publish).await.unwrap();
             }
         },
         _ => {
             let mut interval = time::interval(time::Duration::from_secs(delay));
             for _i in 0..count {
-                let payload = vec![0; payload_size];
-                let publish = PublishRaw::new(&topic, qos, payload).unwrap();
-                let publish = Request::PublishRaw(publish);
-                interval.tick().await;
+                let publish = create_publish(&topic, payload_size, qos);
                 requests_tx.send(publish).await.unwrap();
+                interval.tick().await;
+                
             }
         },
     };
+}
+
+/// create Request
+fn create_publish(topic: &str, payload_size: usize, qos:QoS) -> Request {
+    let payload = vec![0; payload_size];
+    let publish = PublishRaw::new(topic, qos, payload).unwrap();
+    let publish = Request::PublishRaw(publish);
+    publish
 }
 
 /// create subscriptions for a topic.
