@@ -157,21 +157,26 @@ impl Connection {
 
 /// make count number of requests at specified QoS.
 async fn requests(topic: String, payload_size: usize, count: usize, requests_tx: Sender<Request>, qos: QoS, delay: u64) {
-    let mut interval = match delay {
-        0 => None,
-        delay => Some(time::interval(time::Duration::from_secs(delay)))
+    match delay {
+        0 => {
+            for _i in 0..count {
+                let payload = vec![0; payload_size];
+                let publish = PublishRaw::new(&topic, qos, payload).unwrap();
+                let publish = Request::PublishRaw(publish);
+                requests_tx.send(publish).await.unwrap();
+            }
+        },
+        _ => {
+            let mut interval = time::interval(time::Duration::from_secs(delay));
+            for _i in 0..count {
+                let payload = vec![0; payload_size];
+                let publish = PublishRaw::new(&topic, qos, payload).unwrap();
+                let publish = Request::PublishRaw(publish);
+                interval.tick().await;
+                requests_tx.send(publish).await.unwrap();
+            }
+        },
     };
-
-    for _i in 0..count {
-        let payload = vec![0; payload_size];
-        // payload[0] = (i % 255) as u8;
-        let publish = PublishRaw::new(&topic, qos, payload).unwrap();
-        let publish = Request::PublishRaw(publish);
-        if let Some(interval) = &mut interval {
-            interval.tick().await;
-        }
-        requests_tx.send(publish).await.unwrap();
-    }
 }
 
 /// create subscriptions for a topic.
