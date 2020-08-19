@@ -92,7 +92,7 @@ impl Connection {
                 Err(e) => {
                     error!("Id = {}, Connection error = {:?}", self.id, e);
                     reconnects += 1;
-                    if reconnects == 10 {
+                    if reconnects == 1 {
                         break;
                     }
 
@@ -120,24 +120,23 @@ impl Connection {
                 None => {}
             }
 
-            if acks_count >= acks_expected {
+            if !outgoing_done && acks_count >= acks_expected {
                 outgoing_elapsed = start.elapsed();
                 outgoing_done = true;
             }
 
-            if incoming_count >= incoming_expected  {
+            if !incoming_done && incoming_count >= incoming_expected  {
                 incoming_elapsed = start.elapsed();
                 incoming_done = true;
             }
 
-            if outgoing_done {
+            if outgoing_done && incoming_done {
                 break
             }
         }
 
-        // let incoming_throughput = incoming_count * 1000 / incoming_elapsed.as_millis() as usize;
-        let incoming_throughput = 0;
         let outgoing_throughput = (acks_count * 1000) as f32 / outgoing_elapsed.as_millis() as f32;
+        let incoming_throughput = (incoming_count * 1000) as f32 / incoming_elapsed.as_millis() as f32;
 
         println!(
             "Id = {},
@@ -170,7 +169,12 @@ async fn requests(topic: String, payload_size: usize, count: usize, requests_tx:
         if let Some(interval) = &mut interval {
             interval.tick().await;
         }
-        requests_tx.send(publish).await.unwrap();
+
+        // These errors are usually due to eventloop task being dead. We can ignore the
+        // error here as the failed eventloop task would have already printed an error
+        if let Err(_e) = requests_tx.send(publish).await {
+            break
+        }
     }
 }
 
