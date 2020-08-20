@@ -103,8 +103,7 @@ async fn main() {
     for i in 0..connections {
         let config = config.clone();
         handles.push(task::spawn(async move {
-            let id = format!("mqtt-{}", i);
-            let mut connection = connection::Connection::new(id, config) ;
+            let mut connection = connection::Connection::new(i, config) ;
             connection.start().await;
         }));
     }

@@ -9,6 +9,8 @@ use crate::Config;
 use std::sync::Arc;
 use tokio::time::Duration;
 
+const ID_PREFIX: &str = "rumqtt";
+
 pub(crate) struct Connection {
     id: String,
     config: Arc<Config>,
@@ -16,7 +18,8 @@ pub(crate) struct Connection {
 }
 
 impl Connection {
-    pub(crate) fn new(id: String, config: Arc<Config>) -> Connection {
+    pub(crate) fn new(id: usize, config: Arc<Config>) -> Connection {
+        let id = format!("{}-{}", ID_PREFIX, id);
         let mut mqttoptions = MqttOptions::new(&id, &config.server, config.port);
         mqttoptions.set_keep_alive(config.keep_alive);
         mqttoptions.set_inflight(config.max_inflight);
@@ -52,11 +55,13 @@ impl Connection {
         let publishers = self.config.publishers;
         let subscribers = self.config.subscribers;
         let delay = self.config.delay;
+        let id = self.id.clone();
 
         task::spawn(async move {
             // subscribes
             for i in 0..subscribers {
-                let topic = format!("hello/{}/world", i);
+                // Subscribe to one topic per connection
+                let topic = format!("hello/{}-{}/0/world", ID_PREFIX, i);
                 let rx = requests_tx.clone();
                 subscribe(topic, rx, qos).await;
             }
@@ -64,7 +69,7 @@ impl Connection {
             time::delay_for(Duration::from_secs(1)).await;
 
             for i in 0..publishers {
-                let topic = format!("hello/{}/world", i);
+                let topic = format!("hello/{}/{}/world", id, i);
                 let rx = requests_tx.clone();
                 task::spawn(async move {
                     requests(topic, payload_size, count, rx, qos, delay).await;
