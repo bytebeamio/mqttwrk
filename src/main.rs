@@ -15,10 +15,12 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 #[macro_use]
 extern crate log;
 
+use std::sync::Arc;
+
 use futures;
 use argh::FromArgs;
 use tokio::task;
-use std::sync::Arc;
+use tokio::sync::Barrier;
 
 mod connection;
 
@@ -100,11 +102,14 @@ async fn main() {
 
     let connections = config.connections;
     let config = Arc::new(config);
+    let barrier = Arc::new(Barrier::new(config.connections));
+
     for i in 0..connections {
         let config = config.clone();
+        let barrier = barrier.clone();
         handles.push(task::spawn(async move {
             let mut connection = connection::Connection::new(i, config) ;
-            connection.start().await;
+            connection.start(barrier).await;
         }));
     }
 

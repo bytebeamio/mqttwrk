@@ -1,13 +1,15 @@
-use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw};
 use std::time::Instant;
 use std::fs;
-
-use tokio::{task, time};
-use async_channel::Sender;
+use std::sync::Arc;
 
 use crate::Config;
-use std::sync::Arc;
+
+use tokio::{task, time};
+use tokio::sync::Barrier;
 use tokio::time::Duration;
+use async_channel::Sender;
+use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw};
+
 
 const ID_PREFIX: &str = "rumqtt";
 
@@ -44,7 +46,7 @@ impl Connection {
         }
     }
 
-    pub async fn start(&mut self) {
+    pub async fn start(&mut self, barrier: Arc<Barrier>) {
         let mqttoptions = self.mqttoptions.take().unwrap();
         let mut eventloop = EventLoop::new(mqttoptions, 10).await;
         let requests_tx = eventloop.handle();
@@ -77,8 +79,38 @@ impl Connection {
             }
         });
 
+        // Handle connection and subscriptions first
+        let mut sub_ack_count = 0;
+        loop {
+            let (incoming, _outgoing) = match eventloop.poll().await {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("Id = {}, Connection error = {:?}", self.id, e);
+                    return
+                }
+            };
+
+            if let Some(v) = incoming {
+                match v {
+                    Incoming::SubAck(_suback) => sub_ack_count += 1,
+                    Incoming::Connected => continue,
+                    incoming => {
+                        error!("Unexpected incoming packet = {:?}", incoming);
+                        return
+                    }     
+                }
+            }
 
 
+            if sub_ack_count >= self.config.subscribers {
+                break 
+            }
+        }
+
+        // Barrier for all the subscriptions across multiple connections to complete.
+        // Otherwise late connections will loose publishes because they subscribe late.
+        // Leads to main loop never reaching target incoming count (hence blocked forever)
+        barrier.wait().await;
 
         let start = Instant::now();
         let mut acks_count = 0;
@@ -105,31 +137,23 @@ impl Connection {
                 }
             };
 
-            match incoming {
-                Some(v) => {
-                    match v {
-                        Incoming::PubAck(_pkid) => {
-                            acks_count += 1;
-                        }
-                        Incoming::SubAck(_suback) => {
-                            continue
-                        }
-                        Incoming::Publish(_publish) => {
-                            incoming_count += 1;
-                        }
-                        _ => {
-                            continue;
-                        }
-                    }
-                }
-                None => {}
+            if let Some(v) = incoming {
+                match v {
+                   Incoming::PubAck(_pkid) => acks_count += 1,
+                   Incoming::Publish(_publish) => incoming_count += 1,
+                   Incoming::PingResp => continue,
+                   incoming => {
+                       error!("Unexpected incoming packet = {:?}", incoming);
+                       break;
+                   }
+               }
             }
 
             if !outgoing_done && acks_count >= acks_expected {
                 outgoing_elapsed = start.elapsed();
                 outgoing_done = true;
             }
-
+;
             if !incoming_done && incoming_count >= incoming_expected  {
                 incoming_elapsed = start.elapsed();
                 incoming_done = true;
@@ -144,8 +168,8 @@ impl Connection {
         let incoming_throughput = (incoming_count * 1000) as f32 / incoming_elapsed.as_millis() as f32;
 
         println!(
-            "Id = {},
-            Outgoing publishes : Received = {:<7} Throughput = {} messages/s,
+            "Id = {}
+            Outgoing publishes : Received = {:<7} Throughput = {} messages/s
             Incoming publishes : Received = {:<7} Throughput = {} messages/s
             Reconnects         : {}",
             self.id,
