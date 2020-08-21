@@ -20,7 +20,6 @@ use std::sync::Arc;
 use futures;
 use argh::FromArgs;
 use tokio::task;
-use tokio::sync::Barrier;
 
 mod connection;
 
@@ -98,18 +97,35 @@ async fn main() {
     pretty_env_logger::init();
 
     let config: Config = argh::from_env();
-    let mut handles = vec![];
-
-    let connections = config.connections;
     let config = Arc::new(config);
-    let barrier = Arc::new(Barrier::new(config.connections));
+    let mut connections = Vec::with_capacity(config.connections);
 
-    for i in 0..connections {
-        let config = config.clone();
-        let barrier = barrier.clone();
+    // We synchronously finish connections and subscriptions and then spawn connection
+    // start to perform publishes concurrently. This simplifies 2 things
+    // * Creating too many connections wouldn't lead to `Elapsed` error because
+    //   broker accepts connections sequentially
+    // * We don't have to synchronize all subscription with a barrier because
+    //   subscriptions shouldn't happen after publish to prevent wrong incoming
+    //   publish count
+    // Disadvantage being that we have to wait long till actual test can begin
+    for i in 0..config.connections {
+        let connection = match connection::Connection::new(i, config.clone()).await {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Device = {}, Error = {:?}", i, e);
+                return
+            }
+        };
+
+        connections.push(connection);
+    }
+
+    info!("All connections successful. Starting the test");
+    
+    let mut handles = Vec::with_capacity(config.connections);
+    for mut connection in connections {
         handles.push(task::spawn(async move {
-            let mut connection = connection::Connection::new(i, config) ;
-            connection.start(barrier).await;
+            connection.start().await;
         }));
     }
 

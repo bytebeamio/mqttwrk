@@ -1,26 +1,35 @@
 use std::time::Instant;
-use std::fs;
+use std::{fs, io};
 use std::sync::Arc;
 
 use crate::Config;
 
 use tokio::{task, time};
-use tokio::sync::Barrier;
 use tokio::time::Duration;
 use async_channel::Sender;
 use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw};
-
+use thiserror::Error;
 
 const ID_PREFIX: &str = "rumqtt";
 
 pub(crate) struct Connection {
     id: String,
     config: Arc<Config>,
-    mqttoptions: Option<MqttOptions>,
+    eventloop: EventLoop
+}
+
+#[derive(Error, Debug)]
+pub enum ConnectionError {
+    #[error("IO error = {0:?}")]
+    Io(#[from] io::Error),
+    #[error("Connection error = {0:?}")]
+    Connection(#[from] rumqttc::ConnectionError),
+    #[error("Wrong packet = {0:?}")]
+    WrongPacket(Incoming)
 }
 
 impl Connection {
-    pub(crate) fn new(id: usize, config: Arc<Config>) -> Connection {
+    pub async fn new(id: usize, config: Arc<Config>) -> Result<Connection, ConnectionError> {
         let id = format!("{}-{}", ID_PREFIX, id);
         let mut mqttoptions = MqttOptions::new(&id, &config.server, config.port);
         mqttoptions.set_keep_alive(config.keep_alive);
@@ -29,88 +38,75 @@ impl Connection {
         mqttoptions.set_max_request_batch(10);
 
         if let Some(ca_file) = &config.ca_file {
-            let ca = fs::read(ca_file).unwrap();
+            let ca = fs::read(ca_file)?;
             mqttoptions.set_ca(ca);
         }
 
         if let Some(client_cert_file) = &config.client_cert {
-            let cert = fs::read(client_cert_file).unwrap();
-            let key = fs::read(config.client_key.as_ref().unwrap()).unwrap();
+            let cert = fs::read(client_cert_file)?;
+            let key = fs::read(config.client_key.as_ref().unwrap())?;
             mqttoptions.set_client_auth(cert, key);
         }
 
-        Connection {
-            id,
-            config,
-            mqttoptions: Some(mqttoptions),
-        }
-    }
 
-    pub async fn start(&mut self, barrier: Arc<Barrier>) {
-        let mqttoptions = self.mqttoptions.take().unwrap();
         let mut eventloop = EventLoop::new(mqttoptions, 10).await;
         let requests_tx = eventloop.handle();
 
-        let qos = get_qos(self.config.qos);
-        let payload_size = self.config.payload_size;
-        let count = self.config.count;
-        let publishers = self.config.publishers;
-        let subscribers = self.config.subscribers;
-        let delay = self.config.delay;
-        let id = self.id.clone();
-
+        let sconfig = config.clone();
         task::spawn(async move {
+            let qos = get_qos(sconfig.qos);
+
             // subscribes
-            for i in 0..subscribers {
+            for i in 0..sconfig.subscribers {
                 // Subscribe to one topic per connection
                 let topic = format!("hello/{}-{}/0/world", ID_PREFIX, i);
-                let rx = requests_tx.clone();
-                subscribe(topic, rx, qos).await;
-            }
-
-            time::delay_for(Duration::from_secs(1)).await;
-
-            for i in 0..publishers {
-                let topic = format!("hello/{}/{}/world", id, i);
-                let rx = requests_tx.clone();
-                task::spawn(async move {
-                    requests(topic, payload_size, count, rx, qos, delay).await;
-                });
+                subscribe(topic, requests_tx.clone(), qos).await;
             }
         });
 
         // Handle connection and subscriptions first
         let mut sub_ack_count = 0;
         loop {
-            let (incoming, _outgoing) = match eventloop.poll().await {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("Id = {}, Connection error = {:?}", self.id, e);
-                    return
-                }
-            };
-
+            let (incoming, _outgoing) = eventloop.poll().await?;
             if let Some(v) = incoming {
                 match v {
                     Incoming::SubAck(_suback) => sub_ack_count += 1,
                     Incoming::Connected => continue,
-                    incoming => {
-                        error!("Unexpected incoming packet = {:?}", incoming);
-                        return
-                    }     
+                    incoming => return Err(ConnectionError::WrongPacket(incoming))
                 }
             }
 
 
-            if sub_ack_count >= self.config.subscribers {
-                break 
+            if sub_ack_count >= config.subscribers {
+                break
             }
         }
 
-        // Barrier for all the subscriptions across multiple connections to complete.
-        // Otherwise late connections will loose publishes because they subscribe late.
-        // Leads to main loop never reaching target incoming count (hence blocked forever)
-        barrier.wait().await;
+        Ok(Connection {
+            id,
+            config,
+            eventloop
+        })
+    }
+
+    pub async fn start(&mut self) {
+        let qos = get_qos(self.config.qos);
+        let payload_size = self.config.payload_size;
+        let count = self.config.count;
+        let publishers = self.config.publishers;
+        let delay = self.config.delay;
+        let id = self.id.clone();
+
+        let requests_tx = self.eventloop.requests_tx.clone();
+        task::spawn(async move {
+            for i in 0..publishers {
+                let topic = format!("hello/{}/{}/world", id, i);
+                let tx = requests_tx.clone();
+                task::spawn(async move {
+                    requests(topic, payload_size, count, tx, qos, delay).await;
+                });
+            }
+        });
 
         let start = Instant::now();
         let mut acks_count = 0;
@@ -124,7 +120,7 @@ impl Connection {
 
         let mut reconnects: i32 = 0;
         loop {
-            let (incoming, _outgoing) = match eventloop.poll().await {
+            let (incoming, _outgoing) = match self.eventloop.poll().await {
                 Ok(v) => v,
                 Err(e) => {
                     error!("Id = {}, Connection error = {:?}", self.id, e);
@@ -153,7 +149,7 @@ impl Connection {
                 outgoing_elapsed = start.elapsed();
                 outgoing_done = true;
             }
-;
+
             if !incoming_done && incoming_count >= incoming_expected  {
                 incoming_elapsed = start.elapsed();
                 incoming_done = true;
