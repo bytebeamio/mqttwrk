@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use futures;
 use argh::FromArgs;
-use tokio::task;
+use futures::stream::StreamExt;
 
 mod connection;
 
@@ -87,18 +87,14 @@ struct Config {
     delay: u64,
 }
 
-#[derive(Debug, Clone)]
-pub struct Metrics {
-    progress: u16,
-}
 
-#[tokio::main(core_threads = 2)]
+#[tokio::main(core_threads = 4)]
 async fn main() {
     pretty_env_logger::init();
 
     let config: Config = argh::from_env();
     let config = Arc::new(config);
-    let mut connections = Vec::with_capacity(config.connections);
+    let mut handles = futures::stream::FuturesUnordered::new();
 
     // We synchronously finish connections and subscriptions and then spawn connection
     // start to perform publishes concurrently. This simplifies 2 things
@@ -107,9 +103,8 @@ async fn main() {
     // * We don't have to synchronize all subscription with a barrier because
     //   subscriptions shouldn't happen after publish to prevent wrong incoming
     //   publish count
-    // Disadvantage being that we have to wait long till actual test can begin
     for i in 0..config.connections {
-        let connection = match connection::Connection::new(i, config.clone()).await {
+        let mut connection = match connection::Connection::new(i, config.clone()).await {
             Ok(c) => c,
             Err(e) => {
                 error!("Device = {}, Error = {:?}", i, e);
@@ -117,17 +112,15 @@ async fn main() {
             }
         };
 
-        connections.push(connection);
+
+        handles.push(async move { 
+            connection.start().await 
+        });
     }
 
-    info!("All connections successful. Starting the test");
-    
-    let mut handles = Vec::with_capacity(config.connections);
-    for mut connection in connections {
-        handles.push(task::spawn(async move {
-            connection.start().await;
-        }));
+    loop {
+        if handles.next().await.is_none() {
+            break
+        }
     }
-
-    futures::future::join_all(handles).await;
 }

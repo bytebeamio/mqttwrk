@@ -71,7 +71,7 @@ impl Connection {
             if let Some(v) = incoming {
                 match v {
                     Incoming::SubAck(_suback) => sub_ack_count += 1,
-                    Incoming::Connected => continue,
+                    Incoming::Connected => (),
                     incoming => return Err(ConnectionError::WrongPacket(incoming))
                 }
             }
@@ -98,15 +98,13 @@ impl Connection {
         let id = self.id.clone();
 
         let requests_tx = self.eventloop.requests_tx.clone();
-        task::spawn(async move {
-            for i in 0..publishers {
-                let topic = format!("hello/{}/{}/world", id, i);
-                let tx = requests_tx.clone();
-                task::spawn(async move {
-                    requests(topic, payload_size, count, tx, qos, delay).await;
-                });
-            }
-        });
+        for i in 0..publishers {
+            let topic = format!("hello/{}/{}/world", id, i);
+            let tx = requests_tx.clone();
+            task::spawn(async move {
+                requests(topic, payload_size, count, tx, qos, delay).await;
+            });
+        }
 
         let start = Instant::now();
         let mut acks_count = 0;
