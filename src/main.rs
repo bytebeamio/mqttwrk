@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use futures;
 use tokio::task;
+use tokio::sync::Barrier;
 use argh::FromArgs;
 use futures::stream::StreamExt;
 
@@ -95,6 +96,7 @@ async fn main() {
 
     let config: Config = argh::from_env();
     let config = Arc::new(config);
+    let barrier = Arc::new(Barrier::new(config.connections));
     let mut handles = futures::stream::FuturesUnordered::new();
 
     // We synchronously finish connections and subscriptions and then spawn connection
@@ -114,8 +116,9 @@ async fn main() {
         };
 
 
+        let barrier = barrier.clone();
         handles.push(task::spawn(async move { 
-            connection.start().await 
+            connection.start(barrier).await 
         }));
     }
 

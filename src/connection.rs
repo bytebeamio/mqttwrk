@@ -1,10 +1,11 @@
 use std::time::Instant;
 use std::{fs, io};
-use std::sync::{Arc};
+use std::sync::Arc;
 
 use crate::Config;
 
-use tokio::{task, time};
+use tokio::{task, time, select, pin};
+use tokio::sync::Barrier;
 use tokio::time::Duration;
 use async_channel::Sender;
 use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw};
@@ -89,7 +90,27 @@ impl Connection {
         })
     }
 
-    pub async fn start(&mut self) {
+    pub async fn start(&mut self, barrier: Arc<Barrier>) {
+        // Wait for all the subscription from other connections to finish
+        // while doing ping requests so that broker doesn't disconnect
+        loop {
+            select! {
+                _ = self.eventloop.poll() => {},
+                _ = barrier.wait() => break,
+            }
+        } 
+
+        // Wait some time for all subscriptions in rumqttd to be successfull.
+        // This is a workaround because of asynchronous publish and subscribe
+        // paths in rumqttd. 
+        // TODO: Make them sequential in broker and remove this
+        time::delay_for(Duration::from_secs(1)).await;
+
+        if self.id == "rumqtt-0" {
+            println!("All connections and subscriptions ok");
+        }
+
+
         let qos = get_qos(self.config.qos);
         let payload_size = self.config.payload_size;
         let count = self.config.count;
