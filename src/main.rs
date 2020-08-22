@@ -18,6 +18,7 @@ extern crate log;
 use std::sync::Arc;
 
 use futures;
+use tokio::task;
 use argh::FromArgs;
 use futures::stream::StreamExt;
 
@@ -113,9 +114,9 @@ async fn main() {
         };
 
 
-        handles.push(async move { 
+        handles.push(task::spawn(async move { 
             connection.start().await 
-        });
+        }));
     }
 
     loop {

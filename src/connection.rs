@@ -1,6 +1,6 @@
 use std::time::Instant;
 use std::{fs, io};
-use std::sync::Arc;
+use std::sync::{Arc};
 
 use crate::Config;
 
@@ -123,13 +123,16 @@ impl Connection {
                 Err(e) => {
                     error!("Id = {}, Connection error = {:?}", self.id, e);
                     reconnects += 1;
-                    if reconnects == 1 {
-                        break;
-                    }
+                    if reconnects == 1 { break }
 
                     continue;
                 }
             };
+
+            // Never exit during idle connection tests
+            if self.config.publishers == 0 || self.config.count == 0 {
+                continue
+            }
 
             if let Some(v) = incoming {
                 match v {
