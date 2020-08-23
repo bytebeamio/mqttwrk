@@ -4,11 +4,10 @@ use std::sync::Arc;
 
 use crate::Config;
 
-use tokio::{task, time, select, pin};
+use tokio::{task, time, select};
 use tokio::sync::Barrier;
 use tokio::time::Duration;
-use async_channel::Sender;
-use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw};
+use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw, Sender};
 use thiserror::Error;
 
 const ID_PREFIX: &str = "rumqtt";
@@ -35,7 +34,7 @@ impl Connection {
         let mut mqttoptions = MqttOptions::new(&id, &config.server, config.port);
         mqttoptions.set_keep_alive(config.keep_alive);
         mqttoptions.set_inflight(config.max_inflight);
-        mqttoptions.set_conn_timeout(config.conn_timeout);
+        mqttoptions.set_connection_timeout(config.conn_timeout);
         mqttoptions.set_max_request_batch(10);
 
         if let Some(ca_file) = &config.ca_file {
