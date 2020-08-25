@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::Config;
 
-use tokio::{task, time, select};
+use tokio::{task, pin, time, select};
 use tokio::sync::Barrier;
 use tokio::time::Duration;
 use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw, Sender};
@@ -92,10 +92,12 @@ impl Connection {
     pub async fn start(&mut self, barrier: Arc<Barrier>) {
         // Wait for all the subscription from other connections to finish
         // while doing ping requests so that broker doesn't disconnect
+        let barrier = barrier.wait();
+        pin!(barrier);
         loop {
             select! {
                 _ = self.eventloop.poll() => {},
-                _ = barrier.wait() => break,
+                _ = &mut barrier => break,
             }
         } 
 
@@ -108,7 +110,6 @@ impl Connection {
         if self.id == "rumqtt-0" {
             println!("All connections and subscriptions ok");
         }
-
 
         let qos = get_qos(self.config.qos);
         let payload_size = self.config.payload_size;
@@ -158,7 +159,7 @@ impl Connection {
                 match v {
                    Incoming::PubAck(_pkid) => acks_count += 1,
                    Incoming::Publish(_publish) => incoming_count += 1,
-                   Incoming::PingResp => continue,
+                   Incoming::PingResp => {},
                    incoming => {
                        error!("Unexpected incoming packet = {:?}", incoming);
                        break;
