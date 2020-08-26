@@ -22,8 +22,10 @@ use tokio::task;
 use tokio::sync::Barrier;
 use argh::FromArgs;
 use futures::stream::StreamExt;
+use async_channel;
 
 mod connection;
+use hdrhistogram::Histogram;
 
 #[derive(FromArgs)]
 /// Reach new heights.
@@ -98,6 +100,7 @@ async fn main() {
     let config = Arc::new(config);
     let barrier = Arc::new(Barrier::new(config.connections));
     let mut handles = futures::stream::FuturesUnordered::new();
+    let (mut tx, mut rx) = async_channel::bounded::<Histogram::<u64>>(123);
 
     // We synchronously finish connections and subscriptions and then spawn connection
     // start to perform publishes concurrently. This simplifies 2 things
@@ -107,7 +110,8 @@ async fn main() {
     //   subscriptions shouldn't happen after publish to prevent wrong incoming
     //   publish count
     for i in 0..config.connections {
-        let mut connection = match connection::Connection::new(i, config.clone()).await {
+        // let hist_channel = tx.clone();
+        let mut connection = match connection::Connection::new(i, config.clone(), tx.clone()).await {
             Ok(c) => c,
             Err(e) => {
                 error!("Device = {}, Error = {:?}", i, e);
@@ -122,9 +126,19 @@ async fn main() {
         }));
     }
 
+    let mut cnt = 0;
+
     loop {
         if handles.next().await.is_none() {
             break
         }
+
+        // TODO Collect histograms
+        // if let Ok(i) = rx.try_recv() {
+        //     cnt += 1;
+        // }
+        // if cnt == config.connections{
+        //     break;
+        // }
     }
 }

@@ -10,13 +10,16 @@ use tokio::sync::Barrier;
 use tokio::time::Duration;
 use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw};
 use thiserror::Error;
+use hdrhistogram::Histogram;
+use whoami;
 
 const ID_PREFIX: &str = "rumqtt";
 
 pub(crate) struct Connection {
     id: String,
     config: Arc<Config>,
-    eventloop: EventLoop
+    eventloop: EventLoop,
+    sender: Sender::<Histogram::<u64>>,
 }
 
 #[derive(Error, Debug)]
@@ -30,13 +33,14 @@ pub enum ConnectionError {
 }
 
 impl Connection {
-    pub async fn new(id: usize, config: Arc<Config>) -> Result<Connection, ConnectionError> {
+    pub async fn new(id: usize, config: Arc<Config>, tx: Sender::<Histogram::<u64>>) -> Result<Connection, ConnectionError> {
         let id = format!("{}-{}", ID_PREFIX, id);
         let mut mqttoptions = MqttOptions::new(&id, &config.server, config.port);
         mqttoptions.set_keep_alive(config.keep_alive);
         mqttoptions.set_inflight(config.max_inflight);
-        mqttoptions.set_conn_timeout(config.conn_timeout);
+        mqttoptions.set_connection_timeout(config.conn_timeout);
         mqttoptions.set_max_request_batch(10);
+        
 
         if let Some(ca_file) = &config.ca_file {
             let ca = fs::read(ca_file)?;
@@ -86,7 +90,8 @@ impl Connection {
         Ok(Connection {
             id,
             config,
-            eventloop
+            eventloop,
+            sender:tx,
         })
     }
 
@@ -136,6 +141,7 @@ impl Connection {
         let mut incoming_elapsed = Duration::from_secs(0);
         let mut outgoing_done = false;
         let mut incoming_done = false;
+        let mut hist = Histogram::<u64>::new(4).unwrap();
 
         let mut reconnects: i32 = 0;
         loop {
@@ -152,12 +158,17 @@ impl Connection {
 
             // Never exit during idle connection tests
             if self.config.publishers == 0 || self.config.count == 0 {
+                warn!("Idle connection");
                 continue
             }
 
             if let Some(v) = incoming {
                 match v {
-                   Incoming::PubAck(_pkid) => acks_count += 1,
+                   Incoming::PubAck(_pkid) => {
+                       acks_count += 1;
+                       let delay = start.elapsed().as_millis();
+                       hist.record(delay as u64).unwrap();
+                   },
                    Incoming::Publish(_publish) => incoming_count += 1,
                    Incoming::PingResp => continue,
                    incoming => {
@@ -197,9 +208,15 @@ impl Connection {
             incoming_throughput,
             reconnects,
         );
+        println!("# of samples: {}", hist.len());
+        println!("99.999'th percentile: {}", hist.value_at_quantile(0.999999));
+        println!("99.99'th percentile: {}", hist.value_at_quantile(0.99999));
+        println!("90 percentile: {}", hist.value_at_quantile(0.90));
+        println!("50 percentile: {}", hist.value_at_quantile(0.5));
+        self.sender.send(hist).await.unwrap();
     }
-}
 
+}
 
 /// make count number of requests at specified QoS.
 async fn requests(topic: String, payload_size: usize, count: usize, requests_tx: Sender<Request>, qos: QoS, delay: u64) {
