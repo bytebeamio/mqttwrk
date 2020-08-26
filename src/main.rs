@@ -127,6 +127,7 @@ async fn main() {
     }
 
     let mut cnt = 0;
+    let mut hist = Histogram::<u64>::new(4).unwrap();
 
     loop {
         if handles.next().await.is_none() {
@@ -134,11 +135,12 @@ async fn main() {
         }
 
         // TODO Collect histograms
-        // if let Ok(i) = rx.try_recv() {
-        //     cnt += 1;
-        // }
-        // if cnt == config.connections{
-        //     break;
-        // }
+        if let Ok(h) = rx.try_recv() {
+            cnt += 1;
+            hist.add(h).unwrap();
+        }
+        if cnt == config.connections{
+            break;
+        }
     }
 }
