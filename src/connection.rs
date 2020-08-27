@@ -1,5 +1,6 @@
 use std::time::Instant;
 use std::{fs, io};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use async_channel::Sender;
 
@@ -35,7 +36,9 @@ pub enum ConnectionError {
 impl Connection {
     pub async fn new(id: usize, config: Arc<Config>, tx: Sender::<Histogram::<u64>>) -> Result<Connection, ConnectionError> {
         let id = format!("{}-{}", ID_PREFIX, id);
-        let mut mqttoptions = MqttOptions::new(&id, &config.server, config.port);
+        let device_name = whoami::devicename();
+        let con_id = format!("{}-{}", id, device_name);
+        let mut mqttoptions = MqttOptions::new(&con_id, &config.server, config.port);
         mqttoptions.set_keep_alive(config.keep_alive);
         mqttoptions.set_inflight(config.max_inflight);
         mqttoptions.set_connection_timeout(config.conn_timeout);
@@ -143,6 +146,10 @@ impl Connection {
         let mut incoming_done = false;
         let mut hist = Histogram::<u64>::new(4).unwrap();
 
+        // maps to record Publish and PubAck of messages. PKID acts as key
+        let mut pkids_publish:  BTreeMap::<u16, std::time::Instant> = BTreeMap::new();
+        let mut pub_acks: BTreeMap::<u16, std::time::Instant> = BTreeMap::new();
+
         let mut reconnects: i32 = 0;
         loop {
             let (incoming, _outgoing) = match self.eventloop.poll().await {
@@ -164,12 +171,16 @@ impl Connection {
 
             if let Some(v) = incoming {
                 match v {
-                   Incoming::PubAck(_pkid) => {
+                   Incoming::PubAck(pkid) => {
                        acks_count += 1;
-                       let delay = start.elapsed().as_millis();
-                       hist.record(delay as u64).unwrap();
+                       pub_acks.insert(pkid.pkid, Instant::now());
                    },
-                   Incoming::Publish(_publish) => incoming_count += 1,
+                   Incoming::Publish(publish) => {
+                        // We are not sure that whether the packet is out of TCP queue, but this
+                        // is the best we can do from application layer.
+                       incoming_count += 1;
+                       pkids_publish.insert(publish.pkid, Instant::now());
+                   }
                    Incoming::PingResp => continue,
                    incoming => {
                        error!("Unexpected incoming packet = {:?}", incoming);
@@ -208,11 +219,18 @@ impl Connection {
             incoming_throughput,
             reconnects,
         );
-        println!("# of samples: {}", hist.len());
-        println!("99.999'th percentile: {}", hist.value_at_quantile(0.999999));
-        println!("99.99'th percentile: {}", hist.value_at_quantile(0.99999));
-        println!("90 percentile: {}", hist.value_at_quantile(0.90));
-        println!("50 percentile: {}", hist.value_at_quantile(0.5));
+
+        for (pkid, ack_time)  in  pub_acks.into_iter() {
+            let publish_time = pkids_publish.get(&pkid).unwrap();
+            let latency = publish_time.duration_since(ack_time).as_millis();
+            hist.record(latency as u64).unwrap();
+
+        }
+        println!("# of samples          : {}", hist.len());
+        println!("99.999'th percentile  : {}", hist.value_at_quantile(0.999999));
+        println!("99.99'th percentile   : {}", hist.value_at_quantile(0.99999));
+        println!("90 percentile         : {}", hist.value_at_quantile(0.90));
+        println!("50 percentile         : {}", hist.value_at_quantile(0.5));
         self.sender.send(hist).await.unwrap();
     }
 

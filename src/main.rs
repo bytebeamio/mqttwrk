@@ -100,7 +100,7 @@ async fn main() {
     let config = Arc::new(config);
     let barrier = Arc::new(Barrier::new(config.connections));
     let mut handles = futures::stream::FuturesUnordered::new();
-    let (mut tx, mut rx) = async_channel::bounded::<Histogram::<u64>>(123);
+    let (tx, rx) = async_channel::bounded::<Histogram::<u64>>(config.connections);
 
     // We synchronously finish connections and subscriptions and then spawn connection
     // start to perform publishes concurrently. This simplifies 2 things
@@ -133,7 +133,6 @@ async fn main() {
         if handles.next().await.is_none() {
             break
         }
-
         // TODO Collect histograms
         if let Ok(h) = rx.try_recv() {
             cnt += 1;
@@ -143,4 +142,11 @@ async fn main() {
             break;
         }
     }
+
+    println!("-------------AGGREGATE-----------------");
+    println!("# of samples          : {}", hist.len());
+    println!("99.999'th percentile  : {}", hist.value_at_quantile(0.999999));
+    println!("99.99'th percentile   : {}", hist.value_at_quantile(0.99999));
+    println!("90 percentile         : {}", hist.value_at_quantile(0.90));
+    println!("50 percentile         : {}", hist.value_at_quantile(0.5));
 }
