@@ -101,12 +101,6 @@ impl Connection {
             }
         } 
 
-        // Wait some time for all subscriptions in rumqttd to be successfull.
-        // This is a workaround because of asynchronous publish and subscribe
-        // paths in rumqttd. 
-        // TODO: Make them sequential in broker and remove this
-        time::delay_for(Duration::from_secs(1)).await;
-
         if self.id == "rumqtt-0" {
             println!("All connections and subscriptions ok");
         }
