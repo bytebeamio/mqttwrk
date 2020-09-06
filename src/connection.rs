@@ -15,7 +15,8 @@ const ID_PREFIX: &str = "rumqtt";
 pub(crate) struct Connection {
     id: String,
     config: Arc<Config>,
-    eventloop: EventLoop
+    eventloop: EventLoop,
+    sink: Option<String>
 }
 
 #[derive(Error, Debug)]
@@ -29,8 +30,13 @@ pub enum ConnectionError {
 }
 
 impl Connection {
-    pub async fn new(id: usize, config: Arc<Config>) -> Result<Connection, ConnectionError> {
-        let id = format!("{}-{}", ID_PREFIX, id);
+    pub async fn new(id: usize, sink: Option<String>, config: Arc<Config>) -> Result<Connection, ConnectionError> {
+        let id = if sink.is_none() {
+            format!("{}-{}", ID_PREFIX, id)
+        } else {
+            format!("{}-sink-{}", ID_PREFIX, id)
+        };
+
         let mut mqttoptions = MqttOptions::new(&id, &config.server, config.port);
         mqttoptions.set_keep_alive(config.keep_alive);
         mqttoptions.set_inflight(config.max_inflight);
@@ -53,14 +59,28 @@ impl Connection {
         let requests_tx = eventloop.handle();
 
         let sconfig = config.clone();
+        let ssink = sink.clone();
+        let mut subscriber_count = config.subscribers;
+        
+        if sink.is_some() {
+            // subscriber count options are invalidated for sink connections
+            subscriber_count = 1;
+        }
+
         task::spawn(async move {
             let qos = get_qos(sconfig.qos);
 
-            // subscribes
-            for i in 0..sconfig.subscribers {
-                // Subscribe to one topic per connection
-                let topic = format!("hello/{}-{}/0/world", ID_PREFIX, i);
-                subscribe(topic, requests_tx.clone(), qos).await;
+            // Sink connections contains 1 subscription connections
+            match ssink {
+                Some(topic) => subscribe(topic.to_owned(), requests_tx.clone(), qos).await,
+                None => {
+                    // subscribes
+                    for i in 0..sconfig.subscribers {
+                        // Subscribe to one topic per connection
+                        let topic = format!("hello/{}-{}/0/world", ID_PREFIX, i);
+                        subscribe(topic, requests_tx.clone(), qos).await;
+                    }
+                }
             }
         });
 
@@ -76,8 +96,7 @@ impl Connection {
                 }
             }
 
-
-            if sub_ack_count >= config.subscribers {
+            if sub_ack_count >= subscriber_count {
                 break
             }
         }
@@ -85,7 +104,8 @@ impl Connection {
         Ok(Connection {
             id,
             config,
-            eventloop
+            eventloop,
+            sink
         })
     }
 
@@ -94,6 +114,7 @@ impl Connection {
         // while doing ping requests so that broker doesn't disconnect
         let barrier = barrier.wait();
         pin!(barrier);
+        println!("await barrier = {:?}", self.id);
         loop {
             select! {
                 _ = self.eventloop.poll() => {},
@@ -101,7 +122,8 @@ impl Connection {
             }
         } 
 
-        if self.id == "rumqtt-0" {
+        println!("done barrier = {:?}", self.id);
+        if self.id == "rumqtt-sink-1" {
             println!("All connections and subscriptions ok");
         }
 
@@ -111,25 +133,32 @@ impl Connection {
         let publishers = self.config.publishers;
         let delay = self.config.delay;
         let id = self.id.clone();
-
-        let requests_tx = self.eventloop.requests_tx.clone();
-        for i in 0..publishers {
-            let topic = format!("hello/{}/{}/world", id, i);
-            let tx = requests_tx.clone();
-            task::spawn(async move {
-                requests(topic, payload_size, count, tx, qos, delay).await;
-            });
-        }
-
+       
         let start = Instant::now();
         let mut acks_count = 0;
         let mut incoming_count = 0;
-        let acks_expected = self.config.count * self.config.publishers;
-        let incoming_expected = self.config.count * self.config.publishers * self.config.subscribers;
+        let mut acks_expected = self.config.count * self.config.publishers;
+        let mut incoming_expected = self.config.count * self.config.publishers * self.config.subscribers;
         let mut outgoing_elapsed = Duration::from_secs(0);
         let mut incoming_elapsed = Duration::from_secs(0);
         let mut outgoing_done = false;
         let mut incoming_done = false;
+
+        // Sink connections are single subscription connections
+        if self.sink.is_none() {
+            let requests_tx = self.eventloop.requests_tx.clone();
+            for i in 0..publishers {
+                let topic = format!("hello/{}/{}/world", id, i);
+                let tx = requests_tx.clone();
+                task::spawn(async move {
+                    requests(topic, payload_size, count, tx, qos, delay).await;
+                });
+            }
+        } else {
+            acks_expected = 0;
+            incoming_expected = self.config.connections * self.config.count * self.config.publishers;
+        }
+
 
         let mut reconnects: i32 = 0;
         loop {
@@ -149,13 +178,15 @@ impl Connection {
                 continue
             }
 
+            // println!("Id = {}, {:?}", id, incoming);
+
             if let Some(v) = incoming {
                 match v {
                    Incoming::PubAck(_pkid) => acks_count += 1,
                    Incoming::Publish(_publish) => incoming_count += 1,
                    Incoming::PingResp => {},
                    incoming => {
-                       error!("Unexpected incoming packet = {:?}", incoming);
+                       error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
                        break;
                    }
                }

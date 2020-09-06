@@ -76,13 +76,17 @@ struct Config {
     #[argh(option, short = 'q', default = "1")]
     qos: i16,
 
-    /// number of publishers, default 1
+    /// number of publishers per connection, default 1
     #[argh(option, short = 'x', default = "1")]
     publishers: usize,
 
-    /// number of subscribers, default 1
-    #[argh(option, short = 'y', default = "1")]
+    /// number of subscribers per connection, default 1
+    #[argh(option, short = 'y', default = "0")]
     subscribers: usize,
+
+    /// sink connection 1
+    #[argh(option, short = 's')]
+    sink: Option<String>,
 
     /// delay in between each request in secs
     #[argh(option, short = 'd', default = "0")]
@@ -96,7 +100,7 @@ async fn main() {
 
     let config: Config = argh::from_env();
     let config = Arc::new(config);
-    let barrier = Arc::new(Barrier::new(config.connections));
+    let barrier = Arc::new(Barrier::new(config.connections + 1));
     let mut handles = futures::stream::FuturesUnordered::new();
 
     // We synchronously finish connections and subscriptions and then spawn connection
@@ -107,7 +111,7 @@ async fn main() {
     //   subscriptions shouldn't happen after publish to prevent wrong incoming
     //   publish count
     for i in 0..config.connections {
-        let mut connection = match connection::Connection::new(i, config.clone()).await {
+        let mut connection = match connection::Connection::new(i, None, config.clone()).await {
             Ok(c) => c,
             Err(e) => {
                 error!("Device = {}, Error = {:?}", i, e);
@@ -115,6 +119,21 @@ async fn main() {
             }
         };
 
+
+        let barrier = barrier.clone();
+        handles.push(task::spawn(async move { 
+            connection.start(barrier).await 
+        }));
+    }
+
+    if let Some(filter) = config.sink.as_ref() {
+        let mut connection = match connection::Connection::new(1, Some(filter.to_owned()), config.clone()).await {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Device = sink-1, Error = {:?}", e);
+                return
+            }
+        };
 
         let barrier = barrier.clone();
         handles.push(task::spawn(async move { 
