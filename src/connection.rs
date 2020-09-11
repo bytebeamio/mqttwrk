@@ -55,7 +55,7 @@ impl Connection {
         }
 
 
-        let mut eventloop = EventLoop::new(mqttoptions, 10).await;
+        let mut eventloop = EventLoop::new(mqttoptions, 10);
         let requests_tx = eventloop.handle();
 
         let sconfig = config.clone();
@@ -90,8 +90,8 @@ impl Connection {
             let (incoming, _outgoing) = eventloop.poll().await?;
             if let Some(v) = incoming {
                 match v {
-                    Incoming::SubAck(_suback) => sub_ack_count += 1,
-                    Incoming::Connected => (),
+                    Incoming::SubAck(_) => sub_ack_count += 1,
+                    Incoming::ConnAck(_) => (),
                     incoming => return Err(ConnectionError::WrongPacket(incoming))
                 }
             }

@@ -100,7 +100,8 @@ async fn main() {
 
     let config: Config = argh::from_env();
     let config = Arc::new(config);
-    let barrier = Arc::new(Barrier::new(config.connections + 1));
+    let connections = if config.sink.is_some() { config.connections + 1 } else { config.connections };
+    let barrier = Arc::new(Barrier::new(connections));
     let mut handles = futures::stream::FuturesUnordered::new();
 
     // We synchronously finish connections and subscriptions and then spawn connection
