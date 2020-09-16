@@ -7,7 +7,7 @@ use crate::Config;
 use tokio::{task, pin, time, select};
 use tokio::sync::Barrier;
 use tokio::time::Duration;
-use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw, Sender};
+use rumqttc::*;
 use thiserror::Error;
 
 const ID_PREFIX: &str = "rumqtt";
@@ -87,8 +87,8 @@ impl Connection {
         // Handle connection and subscriptions first
         let mut sub_ack_count = 0;
         loop {
-            let (incoming, _outgoing) = eventloop.poll().await?;
-            if let Some(v) = incoming {
+            let event = eventloop.poll().await?;
+            if let Event::Incoming(v) = event {
                 match v {
                     Incoming::SubAck(_) => sub_ack_count += 1,
                     Incoming::ConnAck(_) => (),
@@ -162,7 +162,7 @@ impl Connection {
 
         let mut reconnects: i32 = 0;
         loop {
-            let (incoming, _outgoing) = match self.eventloop.poll().await {
+            let event = match self.eventloop.poll().await {
                 Ok(v) => v,
                 Err(e) => {
                     error!("Id = {}, Connection error = {:?}", self.id, e);
@@ -180,7 +180,7 @@ impl Connection {
 
             // println!("Id = {}, {:?}", id, incoming);
 
-            if let Some(v) = incoming {
+            if let Event::Incoming(v) = event {
                 match v {
                    Incoming::PubAck(_pkid) => acks_count += 1,
                    Incoming::Publish(_publish) => incoming_count += 1,
@@ -236,8 +236,8 @@ async fn requests(topic: String, payload_size: usize, count: usize, requests_tx:
     for _i in 0..count {
         let payload = vec![0; payload_size];
         // payload[0] = (i % 255) as u8;
-        let publish = PublishRaw::new(&topic, qos, payload).unwrap();
-        let publish = Request::PublishRaw(publish);
+        let publish = Publish::new(&topic, qos, payload);
+        let publish = Request::Publish(publish);
         if let Some(interval) = &mut interval {
             interval.tick().await;
         }
