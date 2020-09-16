@@ -8,8 +8,8 @@ edition = "2018"
 
 
 [dependencies]
-rumqttc = { path = "../rumqtt/rumqttc" }
-# rumqttc = {git="https://github.com/bytebeamio/rumqtt.git", rev = "07614a5122f47b180bba80bfd9a172a59d2daf40"}
+# rumqttc = { path = "../rumqtt/rumqttc" }
+rumqttc = { git="https://github.com/bytebeamio/rumqtt.git", branch = "master" }
 bytes = "0.5"
 tokio = { version = "0.2", features = ["full"] }
 rand = "0.7"
