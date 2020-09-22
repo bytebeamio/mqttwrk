@@ -440,6 +440,7 @@ dependencies = [
 [[package]]
 name = "mqtt4bytes"
 version = "0.1.7"
+source = "git+https://github.com/bytebeamio/rumqtt.git#814dc89159a915b90b463664d893c4aa19c7b4c5"
 dependencies = [
  "bytes",
 ]
@@ -660,6 +661,7 @@ dependencies = [
 [[package]]
 name = "rumqttc"
 version = "0.0.7"
+source = "git+https://github.com/bytebeamio/rumqtt.git#814dc89159a915b90b463664d893c4aa19c7b4c5"
 dependencies = [
  "async-channel",
  "bytes",
