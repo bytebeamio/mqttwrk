@@ -15,6 +15,7 @@ const ID_PREFIX: &str = "rumqtt";
 pub(crate) struct Connection {
     id: String,
     config: Arc<Config>,
+    client: AsyncClient,
     eventloop: EventLoop,
     sink: Option<String>
 }
@@ -32,7 +33,7 @@ pub enum ConnectionError {
 impl Connection {
     pub async fn new(id: usize, sink: Option<String>, config: Arc<Config>) -> Result<Connection, ConnectionError> {
         let id = if sink.is_none() {
-            format!("{}-{}", ID_PREFIX, id)
+            format!("{}-{:05}", ID_PREFIX, id)
         } else {
             format!("{}-sink-{}", ID_PREFIX, id)
         };
@@ -55,8 +56,7 @@ impl Connection {
         }
 
 
-        let mut eventloop = EventLoop::new(mqttoptions, 10);
-        let requests_tx = eventloop.handle();
+        let (client, mut eventloop) = AsyncClient::new(mqttoptions, 10);
 
         let sconfig = config.clone();
         let ssink = sink.clone();
@@ -67,18 +67,20 @@ impl Connection {
             subscriber_count = 1;
         }
 
+        let mut sclient = client.clone();
         task::spawn(async move {
             let qos = get_qos(sconfig.qos);
 
             // Sink connections contains 1 subscription connections
             match ssink {
-                Some(topic) => subscribe(topic.to_owned(), requests_tx.clone(), qos).await,
+                Some(topic) => {
+                    sclient.subscribe(topic, qos).await.unwrap();
+                }
                 None => {
-                    // subscribes
+                    // Subscribe to one topic per connection
                     for i in 0..sconfig.subscribers {
-                        // Subscribe to one topic per connection
-                        let topic = format!("hello/{}-{}/0/world", ID_PREFIX, i);
-                        subscribe(topic, requests_tx.clone(), qos).await;
+                        let topic = format!("hello/{}-{:05}/0/world", ID_PREFIX, i);
+                        sclient.subscribe(topic, qos).await.unwrap();
                     }
                 }
             }
@@ -104,6 +106,7 @@ impl Connection {
         Ok(Connection {
             id,
             config,
+            client,
             eventloop,
             sink
         })
@@ -114,7 +117,7 @@ impl Connection {
         // while doing ping requests so that broker doesn't disconnect
         let barrier = barrier.wait();
         pin!(barrier);
-        println!("await barrier = {:?}", self.id);
+        // println!("await barrier = {:?}", self.id);
         loop {
             select! {
                 _ = self.eventloop.poll() => {},
@@ -122,9 +125,9 @@ impl Connection {
             }
         } 
 
-        println!("done barrier = {:?}", self.id);
+        // println!("done barrier = {:?}", self.id);
         if self.id == "rumqtt-sink-1" {
-            println!("All connections and subscriptions ok");
+            // println!("All connections and subscriptions ok");
         }
 
         let qos = get_qos(self.config.qos);
@@ -146,12 +149,11 @@ impl Connection {
 
         // Sink connections are single subscription connections
         if self.sink.is_none() {
-            let requests_tx = self.eventloop.requests_tx.clone();
             for i in 0..publishers {
                 let topic = format!("hello/{}/{}/world", id, i);
-                let tx = requests_tx.clone();
+                let client = self.client.clone();
                 task::spawn(async move {
-                    requests(topic, payload_size, count, tx, qos, delay).await;
+                    requests(topic, payload_size, count, client, qos, delay).await;
                 });
             }
         } else {
@@ -227,7 +229,7 @@ impl Connection {
 
 
 /// make count number of requests at specified QoS.
-async fn requests(topic: String, payload_size: usize, count: usize, requests_tx: Sender<Request>, qos: QoS, delay: u64) {
+async fn requests(topic: String, payload_size: usize, count: usize, mut client: AsyncClient, qos: QoS, delay: u64) {
     let mut interval = match delay {
         0 => None,
         delay => Some(time::interval(time::Duration::from_secs(delay)))
@@ -235,25 +237,16 @@ async fn requests(topic: String, payload_size: usize, count: usize, requests_tx:
 
     for _i in 0..count {
         let payload = vec![0; payload_size];
-        // payload[0] = (i % 255) as u8;
-        let publish = Publish::new(&topic, qos, payload);
-        let publish = Request::Publish(publish);
         if let Some(interval) = &mut interval {
             interval.tick().await;
         }
 
         // These errors are usually due to eventloop task being dead. We can ignore the
         // error here as the failed eventloop task would have already printed an error
-        if let Err(_e) = requests_tx.send(publish).await {
+        if let Err(_e) = client.publish(topic.clone(), qos, false, payload).await {
             break
         }
     }
-}
-
-/// create subscriptions for a topic.
-async fn subscribe(topic: String, requests_tx: Sender<Request>, qos: QoS) {
-    let subscription = Subscribe::new(&topic, qos);
-    requests_tx.send(Request::Subscribe(subscription)).await.unwrap();
 }
 
 /// get QoS level. Default is AtLeastOnce.
