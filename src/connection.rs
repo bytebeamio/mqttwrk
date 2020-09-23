@@ -113,6 +113,7 @@ impl Connection {
     }
 
     pub async fn start(&mut self, barrier: Arc<Barrier>) {
+        let start = Instant::now();
         // Wait for all the subscription from other connections to finish
         // while doing ping requests so that broker doesn't disconnect
         let barrier = barrier.wait();
@@ -126,8 +127,8 @@ impl Connection {
         } 
 
         // println!("done barrier = {:?}", self.id);
-        if self.id == "rumqtt-sink-1" {
-            // println!("All connections and subscriptions ok");
+        if self.id == "rumqtt-00000" {
+            println!("All connections and subscriptions ok. Elapsed = {:?}", start.elapsed().as_secs());
         }
 
         let qos = get_qos(self.config.qos);
@@ -150,7 +151,7 @@ impl Connection {
         // Sink connections are single subscription connections
         if self.sink.is_none() {
             for i in 0..publishers {
-                let topic = format!("hello/{}/{}/world", id, i);
+                let topic = format!("hello/{}-{:05}/0/world", ID_PREFIX, i);
                 let client = self.client.clone();
                 task::spawn(async move {
                     requests(topic, payload_size, count, client, qos, delay).await;
