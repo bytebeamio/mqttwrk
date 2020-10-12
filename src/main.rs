@@ -107,13 +107,20 @@ async fn main() {
     let barrier = Arc::new(Barrier::new(connections));
     let mut handles = futures::stream::FuturesUnordered::new();
 
-    // We synchronously finish connections and subscriptions and then spawn connection
-    // start to perform publishes concurrently. This simplifies 2 things
-    // * Creating too many connections wouldn't lead to `Elapsed` error because
-    //   broker accepts connections sequentially
-    // * We don't have to synchronize all subscription with a barrier because
-    //   subscriptions shouldn't happen after publish to prevent wrong incoming
-    //   publish count
+    // We synchronously finish connections and subscriptions and then spawn
+    // connection start to perform publishes concurrently.
+    //
+    // This simplifies 2 things
+    // * Spawning too many connections wouldn't lead to `Elapsed` error
+    //   in last spawns due to broker accepting connections sequentially
+    // * We have to synchronize all subscription with a barrier because
+    //   subscriptions shouldn't happen after publish to prevent wrong
+    //   incoming publish count
+    //
+    // But the problem which doing connection synchronously (next connectoin
+    // happens only after current connack is recived) is that remote connections
+    // will take a long time to establish 10K connection (much greater than
+    // 10K * 1 millisecond)
     for i in 0..config.connections {
         let mut connection = match connection::Connection::new(i, None, config.clone()).await {
             Ok(c) => c,
