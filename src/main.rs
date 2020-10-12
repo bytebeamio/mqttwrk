@@ -17,11 +17,11 @@ extern crate log;
 
 use std::sync::Arc;
 
-use futures;
-use tokio::task;
-use tokio::sync::Barrier;
 use argh::FromArgs;
+use futures;
 use futures::stream::StreamExt;
+use tokio::sync::Barrier;
+use tokio::task;
 
 mod connection;
 
@@ -93,14 +93,17 @@ struct Config {
     delay: u64,
 }
 
-
 #[tokio::main(core_threads = 4)]
 async fn main() {
     pretty_env_logger::init();
 
     let config: Config = argh::from_env();
     let config = Arc::new(config);
-    let connections = if config.sink.is_some() { config.connections + 1 } else { config.connections };
+    let connections = if config.sink.is_some() {
+        config.connections + 1
+    } else {
+        config.connections
+    };
     let barrier = Arc::new(Barrier::new(connections));
     let mut handles = futures::stream::FuturesUnordered::new();
 
@@ -116,35 +119,31 @@ async fn main() {
             Ok(c) => c,
             Err(e) => {
                 error!("Device = {}, Error = {:?}", i, e);
-                return
+                return;
             }
         };
 
-
         let barrier = barrier.clone();
-        handles.push(task::spawn(async move { 
-            connection.start(barrier).await 
-        }));
+        handles.push(task::spawn(async move { connection.start(barrier).await }));
     }
 
     if let Some(filter) = config.sink.as_ref() {
-        let mut connection = match connection::Connection::new(1, Some(filter.to_owned()), config.clone()).await {
-            Ok(c) => c,
-            Err(e) => {
-                error!("Device = sink-1, Error = {:?}", e);
-                return
-            }
-        };
+        let mut connection =
+            match connection::Connection::new(1, Some(filter.to_owned()), config.clone()).await {
+                Ok(c) => c,
+                Err(e) => {
+                    error!("Device = sink-1, Error = {:?}", e);
+                    return;
+                }
+            };
 
         let barrier = barrier.clone();
-        handles.push(task::spawn(async move { 
-            connection.start(barrier).await 
-        }));
+        handles.push(task::spawn(async move { connection.start(barrier).await }));
     }
 
     loop {
         if handles.next().await.is_none() {
-            break
+            break;
         }
     }
 }
