@@ -151,7 +151,7 @@ impl Connection {
         // Sink connections are single subscription connections
         if self.sink.is_none() {
             for i in 0..publishers {
-                let topic = format!("hello/{}-{:05}/0/world", ID_PREFIX, i);
+                let topic = format!("hello/{}/{}/world", self.id, i);
                 let client = self.client.clone();
                 task::spawn(async move {
                     requests(topic, payload_size, count, client, qos, delay).await;

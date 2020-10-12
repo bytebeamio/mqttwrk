@@ -439,8 +439,9 @@ dependencies = [
 
 [[package]]
 name = "mqtt4bytes"
-version = "0.1.7"
-source = "git+https://github.com/bytebeamio/rumqtt.git#814dc89159a915b90b463664d893c4aa19c7b4c5"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e8fbf32a8280f52691e3c0d984bb97a7ee0edc54be168d535a0484d583da05e"
 dependencies = [
  "bytes",
 ]
@@ -660,8 +661,9 @@ dependencies = [
 
 [[package]]
 name = "rumqttc"
-version = "0.0.7"
-source = "git+https://github.com/bytebeamio/rumqtt.git#814dc89159a915b90b463664d893c4aa19c7b4c5"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "187bbc39c2d3719c2e2a6bbcce6fbd6bde316db7a9b16e05c6d37b0177cebcfd"
 dependencies = [
  "async-channel",
  "bytes",
