@@ -1,14 +1,14 @@
+use std::sync::Arc;
 use std::time::Instant;
 use std::{fs, io};
-use std::sync::Arc;
 
 use crate::Config;
 
-use tokio::{task, pin, time, select};
-use tokio::sync::Barrier;
-use tokio::time::Duration;
 use rumqttc::*;
 use thiserror::Error;
+use tokio::sync::Barrier;
+use tokio::time::Duration;
+use tokio::{pin, select, task, time};
 
 const ID_PREFIX: &str = "rumqtt";
 
@@ -17,7 +17,7 @@ pub(crate) struct Connection {
     config: Arc<Config>,
     client: AsyncClient,
     eventloop: EventLoop,
-    sink: Option<String>
+    sink: Option<String>,
 }
 
 #[derive(Error, Debug)]
@@ -27,11 +27,15 @@ pub enum ConnectionError {
     #[error("Connection error = {0:?}")]
     Connection(#[from] rumqttc::ConnectionError),
     #[error("Wrong packet = {0:?}")]
-    WrongPacket(Incoming)
+    WrongPacket(Incoming),
 }
 
 impl Connection {
-    pub async fn new(id: usize, sink: Option<String>, config: Arc<Config>) -> Result<Connection, ConnectionError> {
+    pub async fn new(
+        id: usize,
+        sink: Option<String>,
+        config: Arc<Config>,
+    ) -> Result<Connection, ConnectionError> {
         let id = if sink.is_none() {
             format!("{}-{:05}", ID_PREFIX, id)
         } else {
@@ -55,13 +59,12 @@ impl Connection {
             mqttoptions.set_client_auth(cert, key);
         }
 
-
         let (client, mut eventloop) = AsyncClient::new(mqttoptions, 10);
 
         let sconfig = config.clone();
         let ssink = sink.clone();
         let mut subscriber_count = config.subscribers;
-        
+
         if sink.is_some() {
             // subscriber count options are invalidated for sink connections
             subscriber_count = 1;
@@ -94,12 +97,12 @@ impl Connection {
                 match v {
                     Incoming::SubAck(_) => sub_ack_count += 1,
                     Incoming::ConnAck(_) => (),
-                    incoming => return Err(ConnectionError::WrongPacket(incoming))
+                    incoming => return Err(ConnectionError::WrongPacket(incoming)),
                 }
             }
 
             if sub_ack_count >= subscriber_count {
-                break
+                break;
             }
         }
 
@@ -108,7 +111,7 @@ impl Connection {
             config,
             client,
             eventloop,
-            sink
+            sink,
         })
     }
 
@@ -124,11 +127,14 @@ impl Connection {
                 _ = self.eventloop.poll() => {},
                 _ = &mut barrier => break,
             }
-        } 
+        }
 
         // println!("done barrier = {:?}", self.id);
         if self.id == "rumqtt-00000" {
-            println!("All connections and subscriptions ok. Elapsed = {:?}", start.elapsed().as_secs());
+            println!(
+                "All connections and subscriptions ok. Elapsed = {:?}",
+                start.elapsed().as_secs()
+            );
         }
 
         let qos = get_qos(self.config.qos);
@@ -137,12 +143,13 @@ impl Connection {
         let publishers = self.config.publishers;
         let delay = self.config.delay;
         let id = self.id.clone();
-       
+
         let start = Instant::now();
         let mut acks_count = 0;
         let mut incoming_count = 0;
         let mut acks_expected = self.config.count * self.config.publishers;
-        let mut incoming_expected = self.config.count * self.config.publishers * self.config.subscribers;
+        let mut incoming_expected =
+            self.config.count * self.config.publishers * self.config.subscribers;
         let mut outgoing_elapsed = Duration::from_secs(0);
         let mut incoming_elapsed = Duration::from_secs(0);
         let mut outgoing_done = false;
@@ -159,9 +166,9 @@ impl Connection {
             }
         } else {
             acks_expected = 0;
-            incoming_expected = self.config.connections * self.config.count * self.config.publishers;
+            incoming_expected =
+                self.config.connections * self.config.count * self.config.publishers;
         }
-
 
         let mut reconnects: i32 = 0;
         loop {
@@ -170,7 +177,9 @@ impl Connection {
                 Err(e) => {
                     error!("Id = {}, Connection error = {:?}", self.id, e);
                     reconnects += 1;
-                    if reconnects == 1 { break }
+                    if reconnects == 1 {
+                        break;
+                    }
 
                     continue;
                 }
@@ -178,21 +187,21 @@ impl Connection {
 
             // Never exit during idle connection tests
             if self.config.publishers == 0 || self.config.count == 0 {
-                continue
+                continue;
             }
 
             // println!("Id = {}, {:?}", id, incoming);
 
             if let Event::Incoming(v) = event {
                 match v {
-                   Incoming::PubAck(_pkid) => acks_count += 1,
-                   Incoming::Publish(_publish) => incoming_count += 1,
-                   Incoming::PingResp => {},
-                   incoming => {
-                       error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
-                       break;
-                   }
-               }
+                    Incoming::PubAck(_pkid) => acks_count += 1,
+                    Incoming::Publish(_publish) => incoming_count += 1,
+                    Incoming::PingResp => {}
+                    incoming => {
+                        error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
+                        break;
+                    }
+                }
             }
 
             if !outgoing_done && acks_count >= acks_expected {
@@ -200,18 +209,19 @@ impl Connection {
                 outgoing_done = true;
             }
 
-            if !incoming_done && incoming_count >= incoming_expected  {
+            if !incoming_done && incoming_count >= incoming_expected {
                 incoming_elapsed = start.elapsed();
                 incoming_done = true;
             }
 
             if outgoing_done && incoming_done {
-                break
+                break;
             }
         }
 
         let outgoing_throughput = (acks_count * 1000) as f32 / outgoing_elapsed.as_millis() as f32;
-        let incoming_throughput = (incoming_count * 1000) as f32 / incoming_elapsed.as_millis() as f32;
+        let incoming_throughput =
+            (incoming_count * 1000) as f32 / incoming_elapsed.as_millis() as f32;
 
         println!(
             "Id = {}
@@ -228,12 +238,18 @@ impl Connection {
     }
 }
 
-
 /// make count number of requests at specified QoS.
-async fn requests(topic: String, payload_size: usize, count: usize, mut client: AsyncClient, qos: QoS, delay: u64) {
+async fn requests(
+    topic: String,
+    payload_size: usize,
+    count: usize,
+    mut client: AsyncClient,
+    qos: QoS,
+    delay: u64,
+) {
     let mut interval = match delay {
         0 => None,
-        delay => Some(time::interval(time::Duration::from_secs(delay)))
+        delay => Some(time::interval(time::Duration::from_secs(delay))),
     };
 
     for _i in 0..count {
@@ -245,7 +261,7 @@ async fn requests(topic: String, payload_size: usize, count: usize, mut client: 
         // These errors are usually due to eventloop task being dead. We can ignore the
         // error here as the failed eventloop task would have already printed an error
         if let Err(_e) = client.publish(topic.clone(), qos, false, payload).await {
-            break
+            break;
         }
     }
 }
@@ -256,7 +272,6 @@ fn get_qos(qos: i16) -> QoS {
         0 => QoS::AtMostOnce,
         1 => QoS::AtLeastOnce,
         2 => QoS::ExactlyOnce,
-        _ => QoS::AtLeastOnce
+        _ => QoS::AtLeastOnce,
     }
 }
-
