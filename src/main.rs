@@ -20,10 +20,12 @@ use std::sync::Arc;
 use argh::FromArgs;
 use futures;
 use futures::stream::StreamExt;
+use async_channel;
 use tokio::sync::Barrier;
 use tokio::task;
 
 mod connection;
+use hdrhistogram::Histogram;
 
 #[derive(FromArgs)]
 /// Reach new heights.
@@ -106,6 +108,7 @@ async fn main() {
     };
     let barrier = Arc::new(Barrier::new(connections));
     let mut handles = futures::stream::FuturesUnordered::new();
+    let (tx, rx) = async_channel::bounded::<Histogram::<u64>>(config.connections);
 
     // We synchronously finish connections and subscriptions and then spawn
     // connection start to perform publishes concurrently.
@@ -148,9 +151,27 @@ async fn main() {
         handles.push(task::spawn(async move { connection.start(barrier).await }));
     }
 
+    let mut cnt = 0;
+    let mut hist = Histogram::<u64>::new(4).unwrap();
+
     loop {
         if handles.next().await.is_none() {
             break;
         }
+        // TODO Collect histograms
+        if let Ok(h) = rx.try_recv() {
+            cnt += 1;
+            hist.add(h).unwrap();
+        }
+        if cnt == config.connections{
+            break;
+        }
     }
+
+    println!("-------------AGGREGATE-----------------");
+    println!("# of samples          : {}", hist.len());
+    println!("99.999'th percentile  : {}", hist.value_at_quantile(0.999999));
+    println!("99.99'th percentile   : {}", hist.value_at_quantile(0.99999));
+    println!("90 percentile         : {}", hist.value_at_quantile(0.90));
+    println!("50 percentile         : {}", hist.value_at_quantile(0.5));
 }
