@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use std::{fs, io};
 use std::collections::BTreeMap;
+use async_channel::Sender;
 
 use crate::Config;
 
@@ -179,6 +180,21 @@ impl Connection {
                 self.config.connections * self.config.count * self.config.publishers;
         }
 
+        // Sink connections are single subscription connections
+        if self.sink.is_none() {
+            for i in 0..publishers {
+                let topic = format!("hello/{}/{}/world", self.id, i);
+                let client = self.client.clone();
+                task::spawn(async move {
+                    requests(topic, payload_size, count, client, qos, delay).await;
+                });
+            }
+        } else {
+            acks_expected = 0;
+            incoming_expected =
+                self.config.connections * self.config.count * self.config.publishers;
+        }
+
         let mut reconnects: i32 = 0;
         loop {
             let event = match self.eventloop.poll().await {
@@ -298,3 +314,4 @@ fn get_qos(qos: i16) -> QoS {
         _ => QoS::AtLeastOnce,
     }
 }
+
