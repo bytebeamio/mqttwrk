@@ -29,7 +29,7 @@ use hdrhistogram::Histogram;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "mqttwrk", about = "An example of StructOpt usage.")]
+#[structopt(name = "mqttwrk", about = "A MQTT server bench marking tool inspired by wrk.")]
 /// Reach new heights.
 struct Config {
     /// number of connections
