@@ -125,7 +125,7 @@ async fn main() {
     // will take a long time to establish 10K connection (much greater than
     // 10K * 1 millisecond)
     for i in 0..config.connections {
-        let mut connection = match connection::Connection::new(i, None, config.clone()).await {
+        let mut connection = match connection::Connection::new(i, None, config.clone(), Some(tx.clone())).await {
             Ok(c) => c,
             Err(e) => {
                 error!("Device = {}, Error = {:?}", i, e);
@@ -139,7 +139,7 @@ async fn main() {
 
     if let Some(filter) = config.sink.as_ref() {
         let mut connection =
-            match connection::Connection::new(1, Some(filter.to_owned()), config.clone()).await {
+            match connection::Connection::new(1, Some(filter.to_owned()), config.clone(), None).await {
                 Ok(c) => c,
                 Err(e) => {
                     error!("Device = sink-1, Error = {:?}", e);

@@ -22,6 +22,7 @@ pub(crate) struct Connection {
     client: AsyncClient,
     eventloop: EventLoop,
     sink: Option<String>,
+    sender: Option<Sender::<Histogram::<u64>>>,
 }
 
 #[derive(Error, Debug)]
@@ -39,6 +40,7 @@ impl Connection {
         id: usize,
         sink: Option<String>,
         config: Arc<Config>,
+        sender: Option<Sender::<Histogram::<u64>>>
     ) -> Result<Connection, ConnectionError> {
         let id = if sink.is_none() {
             format!("{}-{:05}", ID_PREFIX, id)
@@ -117,6 +119,7 @@ impl Connection {
             client,
             eventloop,
             sink,
+            sender
         })
     }
 
@@ -272,7 +275,11 @@ impl Connection {
         println!("99.99'th percentile   : {}", hist.value_at_quantile(0.99999));
         println!("90 percentile         : {}", hist.value_at_quantile(0.90));
         println!("50 percentile         : {}", hist.value_at_quantile(0.5));
-        // self.sender.send(hist).await.unwrap();
+
+        // if publisher, send the histogram to main
+        if let Some(sender) = &self.sender {
+            sender.send(hist).await.unwrap();
+        }
     }
 }
 
