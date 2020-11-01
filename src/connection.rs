@@ -2,14 +2,13 @@ use std::time::Instant;
 use std::{fs, io};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use async_channel::Sender;
 
 use crate::Config;
 
 use tokio::{task, time, select};
 use tokio::sync::Barrier;
 use tokio::time::Duration;
-use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw};
+use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw, Sender};
 use thiserror::Error;
 use hdrhistogram::Histogram;
 use whoami;
