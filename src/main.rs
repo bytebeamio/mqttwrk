@@ -26,72 +26,78 @@ use tokio::task;
 
 mod connection;
 use hdrhistogram::Histogram;
+use structopt::StructOpt;
 
-#[derive(FromArgs)]
+#[derive(Debug, StructOpt)]
+#[structopt(name = "mqttwrk", about = "An example of StructOpt usage.")]
 /// Reach new heights.
 struct Config {
     /// number of connections
-    #[argh(option, short = 'c', default = "1")]
+    #[structopt(short, long, default_value="1")]
     connections: usize,
 
     /// size of payload
-    #[argh(option, short = 'm', default = "100")]
+    #[structopt(short="m", long, default_value="100")]
     payload_size: usize,
 
     /// number of messages
-    #[argh(option, short = 'n', default = "1_000_000")]
+    #[structopt(short="n", long, default_value="100000")]
     count: usize,
 
     /// server
-    #[argh(option, short = 'h', default = "String::from(\"localhost\")")]
+    #[structopt(short="h", long, default_value="localhost")]
     server: String,
 
     /// port
-    #[argh(option, short = 'p', default = "1883")]
+    #[structopt(short="p", long, default_value="1883")]
     port: u16,
 
     /// keep alive
-    #[argh(option, short = 'k', default = "10")]
+    #[structopt(short="k", long, default_value="10")]
     keep_alive: u16,
 
     /// max inflight messages
-    #[argh(option, short = 'i', default = "100")]
+    #[structopt(short="i", long, default_value="100")]
     max_inflight: u16,
 
     /// path to PEM encoded x509 ca-chain file
-    #[argh(option, short = 'R')]
+    #[structopt(short="R", long)]
     ca_file: Option<String>,
 
     /// path to PEM encoded x509 client cert file.
-    #[argh(option, short = 'C')]
+    #[structopt(short="C", long)]
     client_cert: Option<String>,
 
     /// path to PEM encoded client key file
-    #[argh(option, short = 'K')]
+    #[structopt(short="K", long)]
     client_key: Option<String>,
 
     /// connection_timeout
-    #[argh(option, short = 't', default = "5")]
+    #[structopt(short="t", long, default_value="5")]
     conn_timeout: u64,
 
     /// qos, default 1
-    #[argh(option, short = 'q', default = "1")]
+    #[structopt(short="1", long, default_value="1")]
     qos: i16,
 
     /// number of publishers per connection, default 1
-    #[argh(option, short = 'x', default = "1")]
+    // #[argh(option, short = 'x', default = "1")]
+    #[structopt(short="x", long, default_value="1")]
     publishers: usize,
 
     /// number of subscribers per connection, default 1
-    #[argh(option, short = 'y', default = "0")]
+    // #[argh(option, short = 'y', default = "0")]
+    #[structopt(short="y", long, default_value="0")]
     subscribers: usize,
 
     /// sink connection 1
-    #[argh(option, short = 's')]
+    // #[argh(option, short = 's')]
+    #[structopt(short="s", long)]
     sink: Option<String>,
 
     /// delay in between each request in secs
-    #[argh(option, short = 'd', default = "0")]
+    // #[argh(option, short = 'd', default = "0")]
+    #[structopt(short="d", long, default_value="5")]
     delay: u64,
 }
 
@@ -99,7 +105,7 @@ struct Config {
 async fn main() {
     pretty_env_logger::init();
 
-    let config: Config = argh::from_env();
+    let config: Config = Config::from_args();
     let config = Arc::new(config);
     let connections = if config.sink.is_some() {
         config.connections + 1
@@ -122,7 +128,7 @@ async fn main() {
     //
     // But the problem which doing connection synchronously (next connectoin
     // happens only after current connack is recived) is that remote connections
-    // will take a long time to establish 10K connection (much greater than
+    // will take a long time to establish 10K connection (much greater than#[str]
     // 10K * 1 millisecond)
     for i in 0..config.connections {
         let mut connection = match connection::Connection::new(i, None, config.clone(), Some(tx.clone())).await {
