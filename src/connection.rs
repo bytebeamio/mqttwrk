@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 use std::{fs, io};
+use async_channel::Sender;
 
 use crate::Config;
 
@@ -9,6 +10,7 @@ use thiserror::Error;
 use tokio::sync::Barrier;
 use tokio::time::Duration;
 use tokio::{pin, select, task, time};
+use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw};
 
 const ID_PREFIX: &str = "rumqtt";
 

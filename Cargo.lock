@@ -451,6 +451,7 @@ name = "mqttwrk"
 version = "0.1.0"
 dependencies = [
  "argh",
+ "async-channel",
  "bytes",
  "futures",
  "jemallocator",
