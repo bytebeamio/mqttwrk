@@ -17,11 +17,11 @@ extern crate log;
 
 use std::sync::Arc;
 
-use futures;
-use tokio::task;
-use tokio::sync::Barrier;
 use argh::FromArgs;
+use futures;
 use futures::stream::StreamExt;
+use tokio::sync::Barrier;
+use tokio::task;
 
 mod connection;
 
@@ -76,19 +76,22 @@ struct Config {
     #[argh(option, short = 'q', default = "1")]
     qos: i16,
 
-    /// number of publishers, default 1
+    /// number of publishers per connection, default 1
     #[argh(option, short = 'x', default = "1")]
     publishers: usize,
 
-    /// number of subscribers, default 1
-    #[argh(option, short = 'y', default = "1")]
+    /// number of subscribers per connection, default 1
+    #[argh(option, short = 'y', default = "0")]
     subscribers: usize,
+
+    /// sink connection 1
+    #[argh(option, short = 's')]
+    sink: Option<String>,
 
     /// delay in between each request in secs
     #[argh(option, short = 'd', default = "0")]
     delay: u64,
 }
-
 
 #[tokio::main(core_threads = 4)]
 async fn main() {
@@ -96,35 +99,58 @@ async fn main() {
 
     let config: Config = argh::from_env();
     let config = Arc::new(config);
-    let barrier = Arc::new(Barrier::new(config.connections));
+    let connections = if config.sink.is_some() {
+        config.connections + 1
+    } else {
+        config.connections
+    };
+    let barrier = Arc::new(Barrier::new(connections));
     let mut handles = futures::stream::FuturesUnordered::new();
 
-    // We synchronously finish connections and subscriptions and then spawn connection
-    // start to perform publishes concurrently. This simplifies 2 things
-    // * Creating too many connections wouldn't lead to `Elapsed` error because
-    //   broker accepts connections sequentially
-    // * We don't have to synchronize all subscription with a barrier because
-    //   subscriptions shouldn't happen after publish to prevent wrong incoming
-    //   publish count
+    // We synchronously finish connections and subscriptions and then spawn
+    // connection start to perform publishes concurrently.
+    //
+    // This simplifies 2 things
+    // * Spawning too many connections wouldn't lead to `Elapsed` error
+    //   in last spawns due to broker accepting connections sequentially
+    // * We have to synchronize all subscription with a barrier because
+    //   subscriptions shouldn't happen after publish to prevent wrong
+    //   incoming publish count
+    //
+    // But the problem which doing connection synchronously (next connectoin
+    // happens only after current connack is recived) is that remote connections
+    // will take a long time to establish 10K connection (much greater than
+    // 10K * 1 millisecond)
     for i in 0..config.connections {
-        let mut connection = match connection::Connection::new(i, config.clone()).await {
+        let mut connection = match connection::Connection::new(i, None, config.clone()).await {
             Ok(c) => c,
             Err(e) => {
                 error!("Device = {}, Error = {:?}", i, e);
-                return
+                return;
             }
         };
 
+        let barrier = barrier.clone();
+        handles.push(task::spawn(async move { connection.start(barrier).await }));
+    }
+
+    if let Some(filter) = config.sink.as_ref() {
+        let mut connection =
+            match connection::Connection::new(1, Some(filter.to_owned()), config.clone()).await {
+                Ok(c) => c,
+                Err(e) => {
+                    error!("Device = sink-1, Error = {:?}", e);
+                    return;
+                }
+            };
 
         let barrier = barrier.clone();
-        handles.push(task::spawn(async move { 
-            connection.start(barrier).await 
-        }));
+        handles.push(task::spawn(async move { connection.start(barrier).await }));
     }
 
     loop {
         if handles.next().await.is_none() {
-            break
+            break;
         }
     }
 }
