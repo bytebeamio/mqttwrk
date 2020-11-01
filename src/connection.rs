@@ -10,7 +10,6 @@ use thiserror::Error;
 use tokio::sync::Barrier;
 use tokio::time::Duration;
 use tokio::{pin, select, task, time};
-use rumqttc::{MqttOptions, EventLoop, Request, QoS, Incoming, Subscribe, PublishRaw};
 
 const ID_PREFIX: &str = "rumqtt";
 
