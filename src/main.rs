@@ -186,7 +186,7 @@ async fn main() {
 
         // Break out of loop, if timeout happens. TODO: Something better
         if start.elapsed().as_secs() == config.kill_time*60 {
-            warn!("Global timeout elapsed.  Test aborting.");
+            warn!("Global timeout elapsed. Aborting Test.");
             break;
         }
     }
