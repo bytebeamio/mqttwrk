@@ -1,18 +1,18 @@
+use async_channel::Sender;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
 use std::{fs, io};
-use std::collections::BTreeMap;
-use async_channel::Sender;
 
 use crate::Config;
 
+use hdrhistogram::Histogram;
 use rumqttc::*;
 use thiserror::Error;
 use tokio::sync::Barrier;
 use tokio::time::Duration;
-use hdrhistogram::Histogram;
-use whoami;
 use tokio::{pin, select, task, time};
+use whoami;
 
 const ID_PREFIX: &str = "rumqtt";
 
@@ -22,7 +22,7 @@ pub(crate) struct Connection {
     client: AsyncClient,
     eventloop: EventLoop,
     sink: Option<String>,
-    sender: Option<Sender::<Histogram::<u64>>>,
+    sender: Option<Sender<Histogram<u64>>>,
 }
 
 #[derive(Error, Debug)]
@@ -40,7 +40,7 @@ impl Connection {
         id: usize,
         sink: Option<String>,
         config: Arc<Config>,
-        sender: Option<Sender::<Histogram::<u64>>>
+        sender: Option<Sender<Histogram<u64>>>,
     ) -> Result<Connection, ConnectionError> {
         let id = if sink.is_none() {
             format!("{}-{:05}", ID_PREFIX, id)
@@ -53,7 +53,6 @@ impl Connection {
         mqttoptions.set_inflight(config.max_inflight);
         mqttoptions.set_connection_timeout(config.conn_timeout);
         mqttoptions.set_max_request_batch(10);
-        
 
         if let Some(ca_file) = &config.ca_file {
             let ca = fs::read(ca_file)?;
@@ -77,7 +76,7 @@ impl Connection {
             subscriber_count = 1;
         }
 
-        let mut sclient = client.clone();
+        let sclient = client.clone();
         task::spawn(async move {
             let qos = get_qos(sconfig.qos);
 
@@ -119,7 +118,7 @@ impl Connection {
             client,
             eventloop,
             sink,
-            sender
+            sender,
         })
     }
 
@@ -165,8 +164,8 @@ impl Connection {
         let mut hist = Histogram::<u64>::new(4).unwrap();
 
         // maps to record Publish and PubAck of messages. PKID acts as key
-        let mut pkids_publish:  BTreeMap::<u16, std::time::Instant> = BTreeMap::new();
-        let mut pub_acks: BTreeMap::<u16, std::time::Instant> = BTreeMap::new();
+        let pkids_publish: BTreeMap<u16, std::time::Instant> = BTreeMap::new();
+        let pub_acks: BTreeMap<u16, std::time::Instant> = BTreeMap::new();
 
         // Sink connections are single subscription connections
         if self.sink.is_none() {
@@ -264,15 +263,20 @@ impl Connection {
             reconnects,
         );
 
-        for (pkid, ack_time)  in  pub_acks.into_iter() {
+        for (pkid, ack_time) in pub_acks.into_iter() {
             let publish_time = pkids_publish.get(&pkid).unwrap();
             let latency = publish_time.duration_since(ack_time).as_millis();
             hist.record(latency as u64).unwrap();
-
         }
         println!("# of samples          : {}", hist.len());
-        println!("99.999'th percentile  : {}", hist.value_at_quantile(0.999999));
-        println!("99.99'th percentile   : {}", hist.value_at_quantile(0.99999));
+        println!(
+            "99.999'th percentile  : {}",
+            hist.value_at_quantile(0.999999)
+        );
+        println!(
+            "99.99'th percentile   : {}",
+            hist.value_at_quantile(0.99999)
+        );
         println!("90 percentile         : {}", hist.value_at_quantile(0.90));
         println!("50 percentile         : {}", hist.value_at_quantile(0.5));
 
@@ -288,7 +292,7 @@ async fn requests(
     topic: String,
     payload_size: usize,
     count: usize,
-    mut client: AsyncClient,
+    client: AsyncClient,
     qos: QoS,
     delay: u64,
 ) {
@@ -311,7 +315,6 @@ async fn requests(
     }
 }
 
-
 /// get QoS level. Default is AtLeastOnce.
 fn get_qos(qos: i16) -> QoS {
     match qos {
@@ -321,4 +324,3 @@ fn get_qos(qos: i16) -> QoS {
         _ => QoS::AtLeastOnce,
     }
 }
-
