@@ -27,6 +27,8 @@ mod connection;
 use hdrhistogram::Histogram;
 use structopt::StructOpt;
 use std::time::Instant;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use std::collections::HashMap;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -104,7 +106,7 @@ struct Config {
     delay: u64,
 
     // timeout for entire test in minutes
-    #[structopt(short="t", long, default_value="5")]
+    #[structopt(short="T", long, default_value="1")]
     kill_time: u64,
 }
 
@@ -122,6 +124,11 @@ async fn main() {
     let barrier = Arc::new(Barrier::new(connections));
     let mut handles = futures::stream::FuturesUnordered::new();
     let (tx, rx) = async_channel::bounded::<Histogram<u64>>(config.connections);
+    let mp = MultiProgress::new();
+    let sty = ProgressStyle::default_bar()
+        .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
+        .progress_chars("##-");
+    let ack_cnt = config.publishers * config.count;
 
     // We synchronously finish connections and subscriptions and then spawn
     // connection start to perform publishes concurrently.
@@ -138,6 +145,8 @@ async fn main() {
     // will take a long time to establish 10K connection (much greater than#[str]
     // 10K * 1 millisecond)
     for i in 0..config.connections {
+        let pb = mp.add(ProgressBar::new(ack_cnt as u64));
+        pb.set_style(sty.clone());
         let mut connection =
             match connection::Connection::new(i, None, config.clone(), Some(tx.clone())).await {
                 Ok(c) => c,
@@ -148,10 +157,12 @@ async fn main() {
             };
 
         let barrier = barrier.clone();
-        handles.push(task::spawn(async move { connection.start(barrier).await }));
+        handles.push(task::spawn(async move { connection.start(barrier, pb).await }));
     }
 
     if let Some(filter) = config.sink.as_ref() {
+        let pb = mp.add(ProgressBar::new(ack_cnt as u64));
+        pb.set_style(sty.clone());
         let mut connection =
             match connection::Connection::new(1, Some(filter.to_owned()), config.clone(), None)
                 .await
@@ -164,14 +175,21 @@ async fn main() {
             };
 
         let barrier = barrier.clone();
-        handles.push(task::spawn(async move { connection.start(barrier).await }));
+        handles.push(task::spawn(async move { connection.start(barrier, pb).await }));
     }
 
     let mut cnt = 0;
     let mut hist = Histogram::<u64>::new(4).unwrap();
     let start = Instant::now();
+    mp.join();
+
 
     loop {
+        if start.elapsed().as_secs() >= config.kill_time*60 {
+            warn!("Global timeout elapsed. Aborting Test.");
+            break;
+        }
+
         if handles.next().await.is_none() {
             break;
         }
@@ -180,13 +198,12 @@ async fn main() {
             cnt += 1;
             hist.add(h).unwrap();
         }
+
         if cnt == config.connections {
             break;
         }
-
-        // Break out of loop, if timeout happens. TODO: Something better
-        if start.elapsed().as_secs() == config.kill_time*60 {
-            warn!("Global timeout elapsed. Aborting Test.");
+        
+        if cnt == config.connections {
             break;
         }
     }

@@ -13,6 +13,7 @@ use tokio::sync::Barrier;
 use tokio::time::Duration;
 use tokio::{pin, select, task, time};
 use whoami;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
 const ID_PREFIX: &str = "rumqtt";
 
@@ -122,7 +123,7 @@ impl Connection {
         })
     }
 
-    pub async fn start(&mut self, barrier: Arc<Barrier>) {
+    pub async fn start(&mut self, barrier: Arc<Barrier>, mp: ProgressBar) {
         let start = Instant::now();
         // Wait for all the subscription from other connections to finish
         // while doing ping requests so that broker doesn't disconnect
@@ -217,12 +218,16 @@ impl Connection {
                 continue;
             }
 
-            // println!("Id = {}, {:?}", id, incoming);
-
             if let Event::Incoming(v) = event {
                 match v {
-                    Incoming::PubAck(_pkid) => acks_count += 1,
-                    Incoming::Publish(_publish) => incoming_count += 1,
+                    Incoming::PubAck(_pkid) => {
+                        acks_count += 1;
+                        mp.inc(1);
+                    },
+                    Incoming::Publish(_publish) => {
+                        incoming_count += 1;
+                        mp.inc(1);
+                    },
                     Incoming::PingResp => {}
                     incoming => {
                         error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
@@ -244,6 +249,13 @@ impl Connection {
             if outgoing_done && incoming_done {
                 break;
             }
+
+            // println!("{:?} acks_cnt and {:?} acks_expected", acks_count, acks_expected);
+
+            // if start.elapsed().as_secs() >= 60 {
+            //     warn!("Global timeout elapsed. Aborting Test.");
+            //     break;
+            // }
         }
 
         let outgoing_throughput = (acks_count * 1000) as f32 / outgoing_elapsed.as_millis() as f32;
