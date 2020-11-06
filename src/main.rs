@@ -26,6 +26,7 @@ use tokio::task;
 mod connection;
 use hdrhistogram::Histogram;
 use structopt::StructOpt;
+use std::time::Instant;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -101,6 +102,10 @@ struct Config {
     // #[argh(option, short = 'd', default = "0")]
     #[structopt(short = "d", long, default_value = "0")]
     delay: u64,
+
+    // timeout for entire test in minutes
+    #[structopt(short="t", long, default_value="5")]
+    kill_time: u64,
 }
 
 #[tokio::main(core_threads = 4)]
@@ -164,6 +169,7 @@ async fn main() {
 
     let mut cnt = 0;
     let mut hist = Histogram::<u64>::new(4).unwrap();
+    let start = Instant::now();
 
     loop {
         if handles.next().await.is_none() {
@@ -175,6 +181,12 @@ async fn main() {
             hist.add(h).unwrap();
         }
         if cnt == config.connections {
+            break;
+        }
+
+        // Break out of loop, if timeout happens. TODO: Something better
+        if start.elapsed().as_secs() == config.kill_time*60 {
+            warn!("Global timeout elapsed. Aborting Test.");
             break;
         }
     }
