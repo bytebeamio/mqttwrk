@@ -1,28 +1,22 @@
-use async_channel::Sender;
-use std::collections::BTreeMap;
+use std::io;
 use std::sync::Arc;
 use std::time::Instant;
-use std::{fs, io};
 
-use crate::Config;
+use crate::Bench;
 
-use hdrhistogram::Histogram;
+use crate::link::Link;
 use rumqttc::*;
 use thiserror::Error;
 use tokio::sync::Barrier;
 use tokio::time::Duration;
 use tokio::{pin, select, task, time};
-use whoami;
 
 const ID_PREFIX: &str = "rumqtt";
 
 pub(crate) struct Connection {
     id: String,
-    config: Arc<Config>,
-    client: AsyncClient,
-    eventloop: EventLoop,
-    sink: Option<String>,
-    sender: Option<Sender<Histogram<u64>>>,
+    config: Arc<Bench>,
+    link: Link,
 }
 
 #[derive(Error, Debug)]
@@ -36,69 +30,25 @@ pub enum ConnectionError {
 }
 
 impl Connection {
-    pub async fn new(
-        id: usize,
-        sink: Option<String>,
-        config: Arc<Config>,
-        sender: Option<Sender<Histogram<u64>>>,
-    ) -> Result<Connection, ConnectionError> {
-        let id = if sink.is_none() {
-            format!("{}-{:05}", ID_PREFIX, id)
-        } else {
-            format!("{}-sink-{}", ID_PREFIX, id)
-        };
-
-        let mut mqttoptions = MqttOptions::new(&id, &config.server, config.port);
-        mqttoptions.set_keep_alive(config.keep_alive);
-        mqttoptions.set_inflight(config.max_inflight);
-        mqttoptions.set_connection_timeout(config.conn_timeout);
-        mqttoptions.set_max_request_batch(10);
-
-        if let Some(ca_file) = &config.ca_file {
-            let ca = fs::read(ca_file)?;
-            mqttoptions.set_ca(ca);
-        }
-
-        if let Some(client_cert_file) = &config.client_cert {
-            let cert = fs::read(client_cert_file)?;
-            let key = fs::read(config.client_key.as_ref().unwrap())?;
-            mqttoptions.set_client_auth(cert, key);
-        }
-
-        let (client, mut eventloop) = AsyncClient::new(mqttoptions, 10);
-
-        let sconfig = config.clone();
-        let ssink = sink.clone();
-        let mut subscriber_count = config.subscribers;
-
-        if sink.is_some() {
-            // subscriber count options are invalidated for sink connections
-            subscriber_count = 1;
-        }
-
-        let sclient = client.clone();
-        task::spawn(async move {
-            let qos = get_qos(sconfig.qos);
-
-            // Sink connections contains 1 subscription connections
-            match ssink {
-                Some(topic) => {
-                    sclient.subscribe(topic, qos).await.unwrap();
-                }
-                None => {
-                    // Subscribe to one topic per connection
-                    for i in 0..sconfig.subscribers {
-                        let topic = format!("hello/{}-{:05}/0/world", ID_PREFIX, i);
-                        sclient.subscribe(topic, qos).await.unwrap();
-                    }
-                }
-            }
-        });
+    pub async fn new(id: usize, config: Arc<Bench>) -> Result<Connection, ConnectionError> {
+        let id = format!("{}-{:05}", ID_PREFIX, id);
+        let mut link = Link::new(
+            &id,
+            &config.server,
+            config.port,
+            config.keep_alive,
+            config.max_inflight,
+            config.conn_timeout,
+            config.ca_file.clone(),
+            config.client_cert.clone(),
+            config.client_key.clone(),
+        )?;
 
         // Handle connection and subscriptions first
+        let subscriber_count = config.subscribers;
         let mut sub_ack_count = 0;
         loop {
-            let event = eventloop.poll().await?;
+            let event = link.eventloop.poll().await?;
             if let Event::Incoming(v) = event {
                 match v {
                     Incoming::SubAck(_) => sub_ack_count += 1,
@@ -112,14 +62,7 @@ impl Connection {
             }
         }
 
-        Ok(Connection {
-            id,
-            config,
-            client,
-            eventloop,
-            sink,
-            sender,
-        })
+        Ok(Connection { id, config, link })
     }
 
     pub async fn start(&mut self, barrier: Arc<Barrier>) {
@@ -128,10 +71,11 @@ impl Connection {
         // while doing ping requests so that broker doesn't disconnect
         let barrier = barrier.wait();
         pin!(barrier);
+
         // println!("await barrier = {:?}", self.id);
         loop {
             select! {
-                _ = self.eventloop.poll() => {},
+                _ = self.link.eventloop.poll() => {},
                 _ = &mut barrier => break,
             }
         }
@@ -139,7 +83,7 @@ impl Connection {
         // println!("done barrier = {:?}", self.id);
         if self.id == "rumqtt-00000" {
             println!(
-                "All connections and subscriptions ok. Elapsed = {:?}",
+                "Connections & subscriptions ok. Elapsed = {:?}",
                 start.elapsed().as_secs()
             );
         }
@@ -148,58 +92,31 @@ impl Connection {
         let payload_size = self.config.payload_size;
         let count = self.config.count;
         let publishers = self.config.publishers;
+        let subscribers = self.config.subscribers;
         let delay = self.config.delay;
         let id = self.id.clone();
 
         let start = Instant::now();
-        let mut acks_count = 0;
-        let mut incoming_count = 0;
-        let mut acks_expected = self.config.count * self.config.publishers;
-        let mut incoming_expected =
-            self.config.count * self.config.publishers * self.config.subscribers;
+        let acks_expected = count * publishers;
+        let incoming_expected = count * publishers * subscribers;
         let mut outgoing_elapsed = Duration::from_secs(0);
         let mut incoming_elapsed = Duration::from_secs(0);
         let mut outgoing_done = false;
         let mut incoming_done = false;
-        let mut hist = Histogram::<u64>::new(4).unwrap();
+        let mut acks_count = 0;
+        let mut incoming_count = 0;
 
-        // maps to record Publish and PubAck of messages. PKID acts as key
-        let pkids_publish: BTreeMap<u16, std::time::Instant> = BTreeMap::new();
-        let pub_acks: BTreeMap<u16, std::time::Instant> = BTreeMap::new();
-
-        // Sink connections are single subscription connections
-        if self.sink.is_none() {
-            for i in 0..publishers {
-                let topic = format!("hello/{}/{}/world", self.id, i);
-                let client = self.client.clone();
-                task::spawn(async move {
-                    requests(topic, payload_size, count, client, qos, delay).await;
-                });
-            }
-        } else {
-            acks_expected = 0;
-            incoming_expected =
-                self.config.connections * self.config.count * self.config.publishers;
-        }
-
-        // Sink connections are single subscription connections
-        if self.sink.is_none() {
-            for i in 0..publishers {
-                let topic = format!("hello/{}/{}/world", self.id, i);
-                let client = self.client.clone();
-                task::spawn(async move {
-                    requests(topic, payload_size, count, client, qos, delay).await;
-                });
-            }
-        } else {
-            acks_expected = 0;
-            incoming_expected =
-                self.config.connections * self.config.count * self.config.publishers;
+        for i in 0..publishers {
+            let topic = format!("hello/{}/{}/world", self.id, i);
+            let client = self.link.client.clone();
+            task::spawn(async move {
+                requests(topic, payload_size, count, client, qos, delay).await;
+            });
         }
 
         let mut reconnects: i32 = 0;
         loop {
-            let event = match self.eventloop.poll().await {
+            let event = match self.link.eventloop.poll().await {
                 Ok(v) => v,
                 Err(e) => {
                     error!("Id = {}, Connection error = {:?}", self.id, e);
@@ -262,28 +179,6 @@ impl Connection {
             incoming_throughput,
             reconnects,
         );
-
-        for (pkid, ack_time) in pub_acks.into_iter() {
-            let publish_time = pkids_publish.get(&pkid).unwrap();
-            let latency = publish_time.duration_since(ack_time).as_millis();
-            hist.record(latency as u64).unwrap();
-        }
-        println!("# of samples          : {}", hist.len());
-        println!(
-            "99.999'th percentile  : {}",
-            hist.value_at_quantile(0.999999)
-        );
-        println!(
-            "99.99'th percentile   : {}",
-            hist.value_at_quantile(0.99999)
-        );
-        println!("90 percentile         : {}", hist.value_at_quantile(0.90));
-        println!("50 percentile         : {}", hist.value_at_quantile(0.5));
-
-        // if publisher, send the histogram to main
-        if let Some(sender) = &self.sender {
-            sender.send(hist).await.unwrap();
-        }
     }
 }
 
