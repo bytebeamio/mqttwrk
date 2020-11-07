@@ -27,7 +27,7 @@ mod connection;
 use hdrhistogram::Histogram;
 use structopt::StructOpt;
 use std::time::Instant;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressStyle};
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -128,7 +128,7 @@ async fn main() {
         .progress_chars("##-");
     let ack_cnt = config.publishers * config.count;
     let total_expected = config.count * config.publishers * config.connections;
-    let (tt_x, mut rr_x) = mpsc::channel(total_expected);
+    let (tt_x, mut rr_x) = async_channel::bounded::<i32>(total_expected);
 
     // We synchronously finish connections and subscriptions and then spawn
     // connection start to perform publishes concurrently.
@@ -185,7 +185,7 @@ async fn main() {
             break;
         }
         tokio::select! {
-            Some(_) = rr_x.recv() => {
+            Ok(_) = rr_x.recv() => {
                 r_cnt += 1;
                 pb.inc(1);
             },

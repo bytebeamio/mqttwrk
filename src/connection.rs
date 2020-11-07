@@ -1,7 +1,6 @@
 use async_channel::Sender;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use tokio::sync::mpsc::Sender as SyncSender;
 use std::time::Instant;
 use std::{fs, io};
 
@@ -14,7 +13,6 @@ use tokio::sync::Barrier;
 use tokio::time::Duration;
 use tokio::{pin, select, task, time};
 use whoami;
-use indicatif:: ProgressBar;
 
 const ID_PREFIX: &str = "rumqtt";
 
@@ -25,7 +23,7 @@ pub(crate) struct Connection {
     eventloop: EventLoop,
     sink: Option<String>,
     sender: Option<Sender<Histogram<u64>>>,
-    indi_sender: Option<SyncSender<i32>>,
+    indi_sender: Option<Sender<i32>>,
 }
 
 #[derive(Error, Debug)]
@@ -44,7 +42,7 @@ impl Connection {
         sink: Option<String>,
         config: Arc<Config>,
         sender: Option<Sender<Histogram<u64>>>,
-        indi_sender: Option<SyncSender<i32>>,
+        indi_sender: Option<Sender<i32>>,
     ) -> Result<Connection, ConnectionError> {
         let id = if sink.is_none() {
             format!("{}-{:05}", ID_PREFIX, id)
