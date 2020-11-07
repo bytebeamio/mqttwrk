@@ -13,7 +13,7 @@ use tokio::sync::Barrier;
 use tokio::time::Duration;
 use tokio::{pin, select, task, time};
 use whoami;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif:: ProgressBar;
 
 const ID_PREFIX: &str = "rumqtt";
 
@@ -224,10 +224,7 @@ impl Connection {
                         acks_count += 1;
                         mp.inc(1);
                     },
-                    Incoming::Publish(_publish) => {
-                        incoming_count += 1;
-                        mp.inc(1);
-                    },
+                    Incoming::Publish(_publish) => incoming_count += 1,
                     Incoming::PingResp => {}
                     incoming => {
                         error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);

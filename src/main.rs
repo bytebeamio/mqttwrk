@@ -28,7 +28,6 @@ use hdrhistogram::Histogram;
 use structopt::StructOpt;
 use std::time::Instant;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use std::collections::HashMap;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -199,10 +198,6 @@ async fn main() {
             hist.add(h).unwrap();
         }
 
-        if cnt == config.connections {
-            break;
-        }
-        
         if cnt == config.connections {
             break;
         }
