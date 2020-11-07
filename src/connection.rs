@@ -1,6 +1,7 @@
 use async_channel::Sender;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use tokio::sync::mpsc::Sender as SyncSender;
 use std::time::Instant;
 use std::{fs, io};
 
@@ -24,6 +25,7 @@ pub(crate) struct Connection {
     eventloop: EventLoop,
     sink: Option<String>,
     sender: Option<Sender<Histogram<u64>>>,
+    indi_sender: Option<SyncSender<i32>>,
 }
 
 #[derive(Error, Debug)]
@@ -42,6 +44,7 @@ impl Connection {
         sink: Option<String>,
         config: Arc<Config>,
         sender: Option<Sender<Histogram<u64>>>,
+        indi_sender: Option<SyncSender<i32>>,
     ) -> Result<Connection, ConnectionError> {
         let id = if sink.is_none() {
             format!("{}-{:05}", ID_PREFIX, id)
@@ -120,6 +123,7 @@ impl Connection {
             eventloop,
             sink,
             sender,
+            indi_sender
         })
     }
 
@@ -222,7 +226,13 @@ impl Connection {
                 match v {
                     Incoming::PubAck(_pkid) => {
                         acks_count += 1;
-                        mp.inc(1);
+                        // mp.inc(1);
+                        match &self.indi_sender.clone(){
+                            Some(v) => {
+                                v.clone().send(1).await.unwrap();
+                            },
+                            None=> {},
+                        }
                     },
                     Incoming::Publish(_publish) => incoming_count += 1,
                     Incoming::PingResp => {}
