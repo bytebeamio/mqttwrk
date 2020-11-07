@@ -181,22 +181,19 @@ async fn main() {
     let mut hist = Histogram::<u64>::new(4).unwrap();
     
     loop {
-        if cnt == config.connections{
+        if cnt == config.connections || r_cnt == total_expected{
             break;
         }
-        if let Some(_) = rr_x.recv().await{
-            r_cnt += 1;
-            pb.inc(1);
-        }
-        if r_cnt == total_expected {
-            rr_x.close();
-            break;
-        }
-        if let Ok(h) = rx.try_recv() {
-            cnt += 1;
-            hist.add(h).unwrap();
-        }
-        
+        tokio::select! {
+            Some(_) = rr_x.recv() => {
+                r_cnt += 1;
+                pb.inc(1);
+            },
+            Ok(h) = rx.recv() => {
+                cnt += 1;
+                hist.add(h).unwrap();
+            }
+        };
     }
 
     println!("-------------AGGREGATE-----------------");
