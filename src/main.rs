@@ -121,20 +121,14 @@ async fn main() {
         config.connections
     };
     let barrier = Arc::new(Barrier::new(connections));
-    let mut handles = futures::stream::FuturesUnordered::new();
+    let handles = futures::stream::FuturesUnordered::new();
     let (tx, rx) = async_channel::bounded::<Histogram<u64>>(config.connections);
-    let mp = MultiProgress::new();
     let sty = ProgressStyle::default_bar()
         .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
         .progress_chars("##-");
     let ack_cnt = config.publishers * config.count;
-    let mut total_expected = config.count * config.publishers * config.connections;
+    let total_expected = config.count * config.publishers * config.connections;
     let (tt_x, mut rr_x) = mpsc::channel(total_expected);
-
-    let pb = ProgressBar::new(total_expected as u64);
-    let shared_pb = Arc::new(pb);
-
-    
 
     // We synchronously finish connections and subscriptions and then spawn
     // connection start to perform publishes concurrently.
@@ -151,8 +145,6 @@ async fn main() {
     // will take a long time to establish 10K connection (much greater than#[str]
     // 10K * 1 millisecond)
     for i in 0..config.connections {
-        let pb = mp.add(ProgressBar::new(ack_cnt as u64));
-        pb.set_style(sty.clone());
         let mut connection =
             match connection::Connection::new(i, None, config.clone(), Some(tx.clone()), Some(tt_x.clone())).await {
                 Ok(c) => c,
@@ -163,12 +155,10 @@ async fn main() {
             };
 
         let barrier = barrier.clone();
-        handles.push(task::spawn(async move { connection.start(barrier, pb).await }));
+        handles.push(task::spawn(async move { connection.start(barrier).await }));
     }
 
     if let Some(filter) = config.sink.as_ref() {
-        let pb = mp.add(ProgressBar::new(ack_cnt as u64));
-        pb.set_style(sty.clone());
         let mut connection =
             match connection::Connection::new(1, Some(filter.to_owned()), config.clone(), None,None)
                 .await
@@ -181,14 +171,20 @@ async fn main() {
             };
 
         let barrier = barrier.clone();
-        handles.push(task::spawn(async move { connection.start(barrier, pb).await }));
+        handles.push(task::spawn(async move { connection.start(barrier).await }));
     }
+
     let pb = ProgressBar::new(total_expected as u64);
     pb.set_style(sty.clone());
     let mut r_cnt = 0;
-
+    let mut cnt = 0;
+    let mut hist = Histogram::<u64>::new(4).unwrap();
+    
     loop {
-        if let Some(x) = rr_x.recv().await{
+        if cnt == config.connections{
+            break;
+        }
+        if let Some(_) = rr_x.recv().await{
             r_cnt += 1;
             pb.inc(1);
         }
@@ -196,43 +192,11 @@ async fn main() {
             rr_x.close();
             break;
         }
-    }
-
-    let mut cnt = 0;
-    let mut hist = Histogram::<u64>::new(4).unwrap();
-    let start = Instant::now();
-    mp.join();
-    
-
-    
-
-
-    loop {
-        if handles.next().await.is_none() {
-            break;
-        }
-        // TODO Collect histograms
         if let Ok(h) = rx.try_recv() {
             cnt += 1;
             hist.add(h).unwrap();
         }
-
-        // if let Some(x) = rr_x.recv().await{
-        //     r_cnt += 1;
-        //     pb.inc(1);
-        //     println!("AA{:?}", cnt);
-        //     if handles.next().await.is_none() {
-        //         break;
-        //     }
-        // }
-
         
-        if r_cnt == total_expected || cnt == config.connections {
-            break;
-        }
-
-        
-
     }
 
     println!("-------------AGGREGATE-----------------");

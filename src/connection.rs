@@ -127,7 +127,7 @@ impl Connection {
         })
     }
 
-    pub async fn start(&mut self, barrier: Arc<Barrier>, mp: ProgressBar) {
+    pub async fn start(&mut self, barrier: Arc<Barrier>) {
         let start = Instant::now();
         // Wait for all the subscription from other connections to finish
         // while doing ping requests so that broker doesn't disconnect
