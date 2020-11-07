@@ -22,11 +22,12 @@ use futures;
 use futures::stream::StreamExt;
 use tokio::sync::Barrier;
 use tokio::task;
-
+use tokio::sync::mpsc;
 mod connection;
 use hdrhistogram::Histogram;
 use structopt::StructOpt;
 use std::time::Instant;
+use indicatif::{ProgressBar, ProgressStyle};
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -104,7 +105,7 @@ struct Config {
     delay: u64,
 
     // timeout for entire test in minutes
-    #[structopt(short="t", long, default_value="5")]
+    #[structopt(short="T", long, default_value="1")]
     kill_time: u64,
 }
 
@@ -120,8 +121,14 @@ async fn main() {
         config.connections
     };
     let barrier = Arc::new(Barrier::new(connections));
-    let mut handles = futures::stream::FuturesUnordered::new();
+    let handles = futures::stream::FuturesUnordered::new();
     let (tx, rx) = async_channel::bounded::<Histogram<u64>>(config.connections);
+    let sty = ProgressStyle::default_bar()
+        .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
+        .progress_chars("##-");
+    let ack_cnt = config.publishers * config.count;
+    let total_expected = config.count * config.publishers * config.connections;
+    let (tt_x, mut rr_x) = async_channel::bounded::<i32>(total_expected);
 
     // We synchronously finish connections and subscriptions and then spawn
     // connection start to perform publishes concurrently.
@@ -139,7 +146,7 @@ async fn main() {
     // 10K * 1 millisecond)
     for i in 0..config.connections {
         let mut connection =
-            match connection::Connection::new(i, None, config.clone(), Some(tx.clone())).await {
+            match connection::Connection::new(i, None, config.clone(), Some(tx.clone()), Some(tt_x.clone())).await {
                 Ok(c) => c,
                 Err(e) => {
                     error!("Device = {}, Error = {:?}", i, e);
@@ -153,7 +160,7 @@ async fn main() {
 
     if let Some(filter) = config.sink.as_ref() {
         let mut connection =
-            match connection::Connection::new(1, Some(filter.to_owned()), config.clone(), None)
+            match connection::Connection::new(1, Some(filter.to_owned()), config.clone(), None,None)
                 .await
             {
                 Ok(c) => c,
@@ -167,28 +174,26 @@ async fn main() {
         handles.push(task::spawn(async move { connection.start(barrier).await }));
     }
 
+    let pb = ProgressBar::new(total_expected as u64);
+    pb.set_style(sty.clone());
+    let mut r_cnt = 0;
     let mut cnt = 0;
     let mut hist = Histogram::<u64>::new(4).unwrap();
-    let start = Instant::now();
-
+    
     loop {
-        if handles.next().await.is_none() {
+        if cnt == config.connections || r_cnt == total_expected{
             break;
         }
-        // TODO Collect histograms
-        if let Ok(h) = rx.try_recv() {
-            cnt += 1;
-            hist.add(h).unwrap();
-        }
-        if cnt == config.connections {
-            break;
-        }
-
-        // Break out of loop, if timeout happens. TODO: Something better
-        if start.elapsed().as_secs() == config.kill_time*60 {
-            warn!("Global timeout elapsed. Aborting Test.");
-            break;
-        }
+        tokio::select! {
+            Ok(_) = rr_x.recv() => {
+                r_cnt += 1;
+                pb.inc(1);
+            },
+            Ok(h) = rx.recv() => {
+                cnt += 1;
+                hist.add(h).unwrap();
+            }
+        };
     }
 
     println!("-------------AGGREGATE-----------------");

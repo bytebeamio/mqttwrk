@@ -23,6 +23,7 @@ pub(crate) struct Connection {
     eventloop: EventLoop,
     sink: Option<String>,
     sender: Option<Sender<Histogram<u64>>>,
+    indi_sender: Option<Sender<i32>>,
 }
 
 #[derive(Error, Debug)]
@@ -41,6 +42,7 @@ impl Connection {
         sink: Option<String>,
         config: Arc<Config>,
         sender: Option<Sender<Histogram<u64>>>,
+        indi_sender: Option<Sender<i32>>,
     ) -> Result<Connection, ConnectionError> {
         let id = if sink.is_none() {
             format!("{}-{:05}", ID_PREFIX, id)
@@ -119,6 +121,7 @@ impl Connection {
             eventloop,
             sink,
             sender,
+            indi_sender
         })
     }
 
@@ -217,11 +220,18 @@ impl Connection {
                 continue;
             }
 
-            // println!("Id = {}, {:?}", id, incoming);
-
             if let Event::Incoming(v) = event {
                 match v {
-                    Incoming::PubAck(_pkid) => acks_count += 1,
+                    Incoming::PubAck(_pkid) => {
+                        acks_count += 1;
+                        // mp.inc(1);
+                        match &self.indi_sender.clone(){
+                            Some(v) => {
+                                v.clone().send(1).await.unwrap();
+                            },
+                            None=> {},
+                        }
+                    },
                     Incoming::Publish(_publish) => incoming_count += 1,
                     Incoming::PingResp => {}
                     incoming => {
@@ -244,6 +254,13 @@ impl Connection {
             if outgoing_done && incoming_done {
                 break;
             }
+
+            // println!("{:?} acks_cnt and {:?} acks_expected", acks_count, acks_expected);
+
+            // if start.elapsed().as_secs() >= 60 {
+            //     warn!("Global timeout elapsed. Aborting Test.");
+            //     break;
+            // }
         }
 
         let outgoing_throughput = (acks_count * 1000) as f32 / outgoing_elapsed.as_millis() as f32;
