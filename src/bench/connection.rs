@@ -2,6 +2,7 @@ use std::io;
 use std::sync::Arc;
 use std::time::Instant;
 use std::collections::BTreeMap;
+use std::collections::VecDeque;
 
 use crate::BenchConfig;
 use hdrhistogram::Histogram;
@@ -124,6 +125,7 @@ impl Connection {
 
         // maps to record Publish and PubAck of messages. PKID acts as key
         let mut pkids_publish: BTreeMap<u16, std::time::Instant> = BTreeMap::new();
+        let mut vector: VecDeque<std::time::Instant> = VecDeque::with_capacity(self.config.max_inflight as usize);
         
 
         for i in 0..publishers {
@@ -162,8 +164,8 @@ impl Connection {
                         Incoming::PubAck(_pkid) => {
                             acks_count += 1;
                             // PubACK received for pkid `x`. Server acknowledged it. 
-                            let publish_time = pkids_publish.get(&_pkid.pkid).unwrap();
-                            let time_elapsed = Instant::now().duration_since(*publish_time).as_millis();
+                            let publish_time = vector.pop_front().unwrap();
+                            let time_elapsed = Instant::now().duration_since(publish_time).as_millis();
                             hist.record(time_elapsed as u64).unwrap();
                         },
                         Incoming::Publish(_publish) => {
@@ -181,7 +183,7 @@ impl Connection {
                     match v {
                         Outgoing::Publish(_pkid) => {
                             // we are trying to send out a package with pkid `x`.
-                            pkids_publish.insert(_pkid, Instant::now());
+                            vector.push_back(Instant::now());
                         },
                         _ => {},
                     }
