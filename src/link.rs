@@ -2,6 +2,7 @@ use rumqttc::{AsyncClient, EventLoop, MqttOptions};
 use std::{fs, io};
 
 pub struct Link {
+    pub id: String,
     pub client: AsyncClient,
     pub eventloop: EventLoop,
 }
@@ -35,6 +36,10 @@ impl Link {
         }
 
         let (client, eventloop) = AsyncClient::new(mqttoptions, 10);
-        Ok(Link { client, eventloop })
+        Ok(Link {
+            id: id.to_owned(),
+            client,
+            eventloop,
+        })
     }
 }

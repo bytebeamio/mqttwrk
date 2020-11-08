@@ -5,9 +5,6 @@
 //!
 //! - Spawn n clients with publish and subscribe on the same topic (and report thoughput and latencies)
 //! - Spawn n clinets with publishes and 1 subscription to pull all the data (used to simulate a sink in the cloud)
-//! - Offline messaging
-//! - Halfopen connection detection
-//!
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
@@ -15,14 +12,7 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 #[macro_use]
 extern crate log;
 
-use std::sync::Arc;
-
-use futures;
-use futures::stream::StreamExt;
-use tokio::sync::Barrier;
-use tokio::task;
-
-mod connection;
+mod bench;
 mod link;
 
 use structopt::StructOpt;
@@ -33,13 +23,13 @@ use structopt::StructOpt;
     about = "A MQTT server bench marking tool inspired by wrk."
 )]
 enum Config {
-    Bench(Bench),
+    Bench(BenchConfig),
     Console,
 }
 
 /// Benchmark inspired by wrk/wrk2
 #[derive(Debug, StructOpt)]
-struct Bench {
+struct BenchConfig {
     /// number of connections
     #[structopt(short, long, default_value = "1")]
     connections: usize,
@@ -83,8 +73,8 @@ struct Bench {
     #[structopt(short = "y", long, default_value = "0")]
     subscribers: usize,
     /// sink connection 1
-    #[structopt(short = "s", long)]
-    sink: Option<String>,
+    #[structopt(short = "s", long, default_value = "1")]
+    sink: usize,
     /// delay in between each request in secs
     #[structopt(short = "d", long, default_value = "0")]
     delay: u64,
@@ -99,49 +89,7 @@ async fn main() {
 
     let config: Config = Config::from_args();
     match config {
-        Config::Bench(config) => {
-            let config = Arc::new(config);
-            let connections = if config.sink.is_some() {
-                config.connections + 1
-            } else {
-                config.connections
-            };
-            let barrier = Arc::new(Barrier::new(connections));
-            let mut handles = futures::stream::FuturesUnordered::new();
-
-            // We synchronously finish connections and subscriptions and then spawn
-            // connection start to perform publishes concurrently.
-            //
-            // This simplifies 2 things
-            // * Spawning too many connections wouldn't lead to `Elapsed` error
-            //   in last spawns due to broker accepting connections sequentially
-            // * We have to synchronize all subscription with a barrier because
-            //   subscriptions shouldn't happen after publish to prevent wrong
-            //   incoming publish count
-            //
-            // But the problem which doing connection synchronously (next connection
-            // happens only after current connack is received) is that remote connections
-            // will take a long time to establish 10K connection (much greater than#[str]
-            // 10K * 1 millisecond)
-            for i in 0..config.connections {
-                let mut connection = match connection::Connection::new(i, config.clone()).await {
-                    Ok(c) => c,
-                    Err(e) => {
-                        error!("Device = {}, Error = {:?}", i, e);
-                        return;
-                    }
-                };
-
-                let barrier = barrier.clone();
-                handles.push(task::spawn(async move { connection.start(barrier).await }));
-            }
-
-            loop {
-                if handles.next().await.is_none() {
-                    break;
-                }
-            }
-        }
+        Config::Bench(config) => bench::start(config).await,
         Config::Console => todo!(),
     }
 }

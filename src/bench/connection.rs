@@ -2,7 +2,7 @@ use std::io;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::Bench;
+use crate::BenchConfig;
 
 use crate::link::Link;
 use rumqttc::*;
@@ -11,11 +11,8 @@ use tokio::sync::Barrier;
 use tokio::time::Duration;
 use tokio::{pin, select, task, time};
 
-const ID_PREFIX: &str = "rumqtt";
-
 pub(crate) struct Connection {
-    id: String,
-    config: Arc<Bench>,
+    config: Arc<BenchConfig>,
     link: Link,
 }
 
@@ -30,22 +27,37 @@ pub enum ConnectionError {
 }
 
 impl Connection {
-    pub async fn new(id: usize, config: Arc<Bench>) -> Result<Connection, ConnectionError> {
-        let id = format!("{}-{:05}", ID_PREFIX, id);
-        let mut link = Link::new(
-            &id,
-            &config.server,
-            config.port,
-            config.keep_alive,
-            config.max_inflight,
-            config.conn_timeout,
-            config.ca_file.clone(),
-            config.client_cert.clone(),
-            config.client_key.clone(),
-        )?;
+    pub async fn new(
+        mut link: Link,
+        config: Arc<BenchConfig>,
+    ) -> Result<Connection, ConnectionError> {
+        let client = link.client.clone();
+        let subscribers = config.subscribers;
+        let publishers = config.publishers;
+        let connections = config.connections;
+        let qos = config.qos;
+
+        // If there are 10 connections with 3 publishers and 2 subscribers,
+        // each connection publishes to topics 'hello/rumqtt-{id}/{0, 1, 2}/world'
+        // and subscribes to all the topics of first 2 connections. 'hello/rumqtt-{0, 1}/+/world'
+        // 2 subscribers implies, every connection subscribes to all the topics
+        // for first 2 connections
+        task::spawn(async move {
+            if subscribers > 0 {
+                assert!(publishers > 0, "There should be at least 1 publisher");
+                assert!(
+                    connections >= subscribers,
+                    "#connections should be > subscribers"
+                );
+            }
+
+            for i in 0..subscribers {
+                let topic = format!("hello/rumqtt-{:05}/+/world", i);
+                client.subscribe(topic, get_qos(qos)).await.unwrap();
+            }
+        });
 
         // Handle connection and subscriptions first
-        let subscriber_count = config.subscribers;
         let mut sub_ack_count = 0;
         loop {
             let event = link.eventloop.poll().await?;
@@ -57,16 +69,17 @@ impl Connection {
                 }
             }
 
-            if sub_ack_count >= subscriber_count {
+            if sub_ack_count >= subscribers {
                 break;
             }
         }
 
-        Ok(Connection { id, config, link })
+        Ok(Connection { config, link })
     }
 
     pub async fn start(&mut self, barrier: Arc<Barrier>) {
         let start = Instant::now();
+
         // Wait for all the subscription from other connections to finish
         // while doing ping requests so that broker doesn't disconnect
         let barrier = barrier.wait();
@@ -81,7 +94,7 @@ impl Connection {
         }
 
         // println!("done barrier = {:?}", self.id);
-        if self.id == "rumqtt-00000" {
+        if self.link.id == "rumqtt-00000" {
             println!(
                 "Connections & subscriptions ok. Elapsed = {:?}",
                 start.elapsed().as_secs()
@@ -94,7 +107,7 @@ impl Connection {
         let publishers = self.config.publishers;
         let subscribers = self.config.subscribers;
         let delay = self.config.delay;
-        let id = self.id.clone();
+        let id = self.link.id.clone();
 
         let start = Instant::now();
         let acks_expected = count * publishers;
@@ -107,7 +120,7 @@ impl Connection {
         let mut incoming_count = 0;
 
         for i in 0..publishers {
-            let topic = format!("hello/{}/{}/world", self.id, i);
+            let topic = format!("hello/{}/{}/world", self.link.id, i);
             let client = self.link.client.clone();
             task::spawn(async move {
                 requests(topic, payload_size, count, client, qos, delay).await;
@@ -119,7 +132,7 @@ impl Connection {
             let event = match self.link.eventloop.poll().await {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("Id = {}, Connection error = {:?}", self.id, e);
+                    error!("Id = {}, Connection error = {:?}", self.link.id, e);
                     reconnects += 1;
                     if reconnects == 1 {
                         break;
@@ -172,7 +185,7 @@ impl Connection {
             Outgoing publishes : Received = {:<7} Throughput = {} messages/s
             Incoming publishes : Received = {:<7} Throughput = {} messages/s
             Reconnects         : {}",
-            self.id,
+            self.link.id,
             acks_count,
             outgoing_throughput,
             incoming_count,
