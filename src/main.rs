@@ -13,6 +13,7 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 extern crate log;
 
 mod bench;
+mod console;
 mod link;
 
 use structopt::StructOpt;
@@ -24,10 +25,10 @@ use structopt::StructOpt;
 )]
 enum Config {
     Bench(BenchConfig),
-    Console,
+    Console(ConsoleConfig),
 }
 
-/// Benchmark inspired by wrk/wrk2
+/// Benchmarks inspired by wrk/wrk2
 #[derive(Debug, StructOpt)]
 struct BenchConfig {
     /// number of connections
@@ -78,9 +79,37 @@ struct BenchConfig {
     /// delay in between each request in secs
     #[structopt(short = "d", long, default_value = "0")]
     delay: u64,
-    /// timeout for entire test in minutes
+}
+
+/// Benchmarks inspired by wrk/wrk2
+#[derive(Debug, StructOpt)]
+struct ConsoleConfig {
+    /// size of payload
+    #[structopt(short = "m", long, default_value = "1024")]
+    max_payload_size: usize,
+    /// server
+    #[structopt(short = "h", long, default_value = "localhost")]
+    server: String,
+    /// port
+    #[structopt(short = "p", long, default_value = "1883")]
+    port: u16,
+    /// keep alive
+    #[structopt(short = "k", long, default_value = "10")]
+    keep_alive: u16,
+    /// max inflight messages
+    #[structopt(short = "i", long, default_value = "100")]
+    max_inflight: u16,
+    /// path to PEM encoded x509 ca-chain file
+    #[structopt(short = "R", long)]
+    ca_file: Option<String>,
+    /// path to PEM encoded x509 client cert file.
+    #[structopt(short = "C", long)]
+    client_cert: Option<String>,
+    /// path to PEM encoded client key file
+    #[structopt(short = "K", long)]
+    client_key: Option<String>,
     #[structopt(short = "t", long, default_value = "5")]
-    kill_time: u64,
+    conn_timeout: u64,
 }
 
 #[tokio::main(core_threads = 4)]
@@ -90,6 +119,8 @@ async fn main() {
     let config: Config = Config::from_args();
     match config {
         Config::Bench(config) => bench::start(config).await,
-        Config::Console => todo!(),
+        Config::Console(config) => {
+            console::start(config).await.unwrap();
+        }
     }
 }
