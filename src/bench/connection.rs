@@ -219,6 +219,18 @@ impl Connection {
             incoming_throughput,
             reconnects,
         );
+        println!("# of samples          : {}", hist.len());
+        println!(
+            "99.999'th percentile  : {}",
+            hist.value_at_quantile(0.999999)
+        );
+        println!(
+            "99.99'th percentile   : {}",
+            hist.value_at_quantile(0.99999)
+        );
+        println!("90 percentile         : {}", hist.value_at_quantile(0.90));
+        println!("50 percentile         : {}", hist.value_at_quantile(0.5));
+
     }
 }
 
