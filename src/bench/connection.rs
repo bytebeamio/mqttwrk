@@ -1,8 +1,10 @@
 use std::io;
 use std::sync::Arc;
 use std::time::Instant;
+use std::collections::BTreeMap;
 
 use crate::BenchConfig;
+use hdrhistogram::Histogram;
 
 use crate::link::Link;
 use rumqttc::*;
@@ -118,6 +120,11 @@ impl Connection {
         let mut incoming_done = false;
         let mut acks_count = 0;
         let mut incoming_count = 0;
+        let mut hist = Histogram::<u64>::new(4).unwrap();
+
+        // maps to record Publish and PubAck of messages. PKID acts as key
+        let mut pkids_publish: BTreeMap<u16, std::time::Instant> = BTreeMap::new();
+        
 
         for i in 0..publishers {
             let topic = format!("hello/{}/{}/world", self.link.id, i);
@@ -149,16 +156,36 @@ impl Connection {
 
             // println!("Id = {}, {:?}", id, incoming);
 
-            if let Event::Incoming(v) = event {
-                match v {
-                    Incoming::PubAck(_pkid) => acks_count += 1,
-                    Incoming::Publish(_publish) => incoming_count += 1,
-                    Incoming::PingResp => {}
-                    incoming => {
-                        error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
-                        break;
+            match event {
+                Event::Incoming(v) => {
+                    match v {
+                        Incoming::PubAck(_pkid) => {
+                            acks_count += 1;
+                            // PubACK received for pkid `x`. Server acknowledged it. 
+                            let publish_time = pkids_publish.get(&_pkid.pkid).unwrap();
+                            let time_elapsed = Instant::now().duration_since(*publish_time).as_millis();
+                            hist.record(time_elapsed as u64).unwrap();
+                        },
+                        Incoming::Publish(_publish) => {
+                            incoming_count += 1;
+                            
+                        },
+                        Incoming::PingResp => {}
+                        incoming => {
+                            error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
+                            break;
+                        }
                     }
-                }
+                },
+                Event::Outgoing(v) =>{
+                    match v {
+                        Outgoing::Publish(_pkid) => {
+                            // we are trying to send out a package with pkid `x`.
+                            pkids_publish.insert(_pkid, Instant::now());
+                        },
+                        _ => {},
+                    }
+                },
             }
 
             if !outgoing_done && acks_count >= acks_expected {
