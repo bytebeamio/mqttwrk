@@ -4,18 +4,28 @@ use std::sync::Arc;
 use tokio::sync::Barrier;
 use tokio::task;
 
+
 mod connection;
 mod sink;
+use hdrhistogram::Histogram;
 
 use crate::link::Link;
 use connection::Connection;
 use sink::Sink;
+use indicatif::{ProgressBar, ProgressStyle};
 
 pub(crate) async fn start(config: BenchConfig) {
     let config = Arc::new(config);
     let barriers_count = config.connections + config.sink;
     let barrier = Arc::new(Barrier::new(barriers_count));
     let mut handles = futures::stream::FuturesUnordered::new();
+    let ack_cnt = config.publishers * config.count;
+    let total_expected = config.count * config.publishers * config.connections;
+    let (tt_x, mut rr_x) = async_channel::bounded::<i32>(total_expected);
+    let (tx, rx) = async_channel::bounded::<Histogram<u64>>(config.connections);
+    let sty = ProgressStyle::default_bar()
+        .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
+        .progress_chars("##-");
 
     // * Spawning too many connections wouldn't lead to `Elapsed` error
     //   in last spawns due to broker accepting connections sequentially
@@ -42,6 +52,9 @@ pub(crate) async fn start(config: BenchConfig) {
             config.ca_file.clone(),
             config.client_cert.clone(),
             config.client_key.clone(),
+            Some(tt_x.clone()),
+            Some(tx.clone())
+
         )
         .unwrap();
 
@@ -66,6 +79,8 @@ pub(crate) async fn start(config: BenchConfig) {
             config.ca_file.clone(),
             config.client_cert.clone(),
             config.client_key.clone(),
+            None,
+            None
         )
         .unwrap();
 

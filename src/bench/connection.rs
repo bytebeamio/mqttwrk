@@ -1,8 +1,6 @@
 use std::io;
 use std::sync::Arc;
 use std::time::Instant;
-use std::collections::BTreeMap;
-use std::collections::VecDeque;
 
 use crate::BenchConfig;
 use hdrhistogram::Histogram;
@@ -16,7 +14,7 @@ use tokio::{pin, select, task, time};
 
 pub(crate) struct Connection {
     config: Arc<BenchConfig>,
-    link: Link,
+    link: Link
 }
 
 #[derive(Error, Debug)]
@@ -77,7 +75,7 @@ impl Connection {
             }
         }
 
-        Ok(Connection { config, link })
+        Ok(Connection { config, link})
     }
 
     pub async fn start(&mut self, barrier: Arc<Barrier>) {
@@ -184,16 +182,11 @@ impl Connection {
                         }
                     }
                 },
-                Event::Outgoing(v) =>{
-                    match v {
-                        Outgoing::Publish(_pkid) => {
-                            // we are trying to send out a package with pkid `x`.
-                            let index = _pkid as usize;
-                            time_vec.insert(index, Some(Instant::now()));
-                        },
-                        _ => {},
-                    }
+                Event::Outgoing(Outgoing::Publish(pkid)) =>{
+                    let index = pkid as usize;
+                    time_vec.insert(index, Some(Instant::now()));
                 },
+                _ => {},
             }
 
             if !outgoing_done && acks_count >= acks_expected {

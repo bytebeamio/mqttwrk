@@ -100,6 +100,8 @@ pub(crate) async fn start(config: ConsoleConfig) -> io::Result<()> {
             config.ca_file.clone(),
             config.client_cert.clone(),
             config.client_key.clone(),
+            None,
+            None,
         )
         .unwrap(),
     );
