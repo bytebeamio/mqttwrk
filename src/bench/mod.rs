@@ -90,9 +90,30 @@ pub(crate) async fn start(config: BenchConfig) {
         }));
     }
 
+    // loop {
+    //     if handles.next().await.is_none() {
+    //         break;
+    //     }
+    // }
+    let pb = ProgressBar::new(total_expected as u64);
+    pb.set_style(sty.clone());
+    let mut r_cnt = 0;
+    let mut cnt = 0;
+    let mut hist = Histogram::<u64>::new(4).unwrap();
+    
     loop {
-        if handles.next().await.is_none() {
+        if cnt == config.connections || r_cnt == total_expected{
             break;
         }
+        tokio::select! {
+            Ok(_) = rr_x.recv() => {
+                r_cnt += 1;
+                pb.inc(1);
+            },
+            Ok(h) = rx.recv() => {
+                cnt += 1;
+                hist.add(h).unwrap();
+            }
+        };
     }
 }

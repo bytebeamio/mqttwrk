@@ -170,6 +170,14 @@ impl Connection {
                                 None => warn!("No publish record for Pkid={:?}", index),
                             };
 
+                            // send progress tick over indi_sender
+                            match &self.link.indi_sender.clone(){
+                                Some(v) => {
+                                    v.clone().send(1).await.unwrap();
+                                },
+                                None=> {},
+                            };
+
                         },
                         Incoming::Publish(_publish) => {
                             incoming_count += 1;
@@ -231,6 +239,11 @@ impl Connection {
         );
         println!("90 percentile         : {}", hist.value_at_quantile(0.90));
         println!("50 percentile         : {}", hist.value_at_quantile(0.5));
+
+        // send the histogram over this channel
+        if let Some(sender) = &self.link.sender {
+            sender.send(hist).await.unwrap();
+        }
 
     }
 }
