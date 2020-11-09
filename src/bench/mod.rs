@@ -9,10 +9,11 @@ mod connection;
 mod sink;
 use hdrhistogram::Histogram;
 
-use crate::link::Link;
+use crate::link::{Link, Status};
 use connection::Connection;
 use sink::Sink;
 use indicatif::{ProgressBar, ProgressStyle};
+
 
 pub(crate) async fn start(config: BenchConfig) {
     let config = Arc::new(config);
@@ -27,6 +28,7 @@ pub(crate) async fn start(config: BenchConfig) {
         .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
         .progress_chars("##-");
 
+    let (c_tx, c_rx) = async_channel::unbounded::<Status>();
     // * Spawning too many connections wouldn't lead to `Elapsed` error
     //   in last spawns due to broker accepting connections sequentially
     // * We have to synchronize all subscription with a barrier because
@@ -52,9 +54,7 @@ pub(crate) async fn start(config: BenchConfig) {
             config.ca_file.clone(),
             config.client_cert.clone(),
             config.client_key.clone(),
-            Some(tt_x.clone()),
-            Some(tx.clone())
-
+            c_tx.clone(),
         )
         .unwrap();
 
@@ -64,6 +64,7 @@ pub(crate) async fn start(config: BenchConfig) {
         }));
     }
 
+    let (cc_tx, cc_rx) = async_channel::unbounded::<Status>();
     for i in 0..config.sink {
         let barrier = barrier.clone();
         let config = config.clone();
@@ -79,8 +80,7 @@ pub(crate) async fn start(config: BenchConfig) {
             config.ca_file.clone(),
             config.client_cert.clone(),
             config.client_key.clone(),
-            None,
-            None
+            cc_tx.clone(),
         )
         .unwrap();
 

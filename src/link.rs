@@ -3,12 +3,17 @@ use std::{fs, io};
 use hdrhistogram::Histogram;
 use rumqttc::*;
 
+pub enum Status{
+    Increment(i32),
+    Hist(Histogram<u64>)
+}
+
+
 pub struct Link {
     pub id: String,
     pub client: AsyncClient,
     pub eventloop: EventLoop,
-    pub indi_sender: Option<Sender<i32>>,
-    pub sender: Option<Sender<Histogram<u64>>>,
+    pub sender: Sender<Status>,
 }
 
 impl Link {
@@ -22,8 +27,7 @@ impl Link {
         ca_file: Option<String>,
         client_cert_file: Option<String>,
         client_key_file: Option<String>,
-        indi_sender: Option<Sender<i32>>,
-        sender: Option<Sender<Histogram<u64>>>,
+        sender: Sender<Status>,
 
     ) -> io::Result<Link> {
         let mut mqttoptions = MqttOptions::new(id, server, port);
@@ -47,8 +51,7 @@ impl Link {
             id: id.to_owned(),
             client,
             eventloop,
-            indi_sender,
-            sender
+            sender,
         })
     }
 }

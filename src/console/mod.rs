@@ -1,4 +1,4 @@
-use crate::link::Link;
+use crate::link::{Link, Status};
 use crate::ConsoleConfig;
 use rumqttc::{qos, Event, Outgoing};
 use rustyline::error::ReadlineError;
@@ -6,6 +6,7 @@ use rustyline::Editor;
 use std::collections::VecDeque;
 use std::io;
 use structopt::StructOpt;
+
 
 struct Console {
     link: Link,
@@ -89,6 +90,7 @@ struct Subscribe {
 }
 
 pub(crate) async fn start(config: ConsoleConfig) -> io::Result<()> {
+    let (c_tx, c_rx) = async_channel::unbounded::<Status>();
     let mut console = Console::new(
         Link::new(
             "mqttwrkconsole",
@@ -100,8 +102,8 @@ pub(crate) async fn start(config: ConsoleConfig) -> io::Result<()> {
             config.ca_file.clone(),
             config.client_cert.clone(),
             config.client_key.clone(),
-            None,
-            None,
+            c_tx,
+           
         )
         .unwrap(),
     );

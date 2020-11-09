@@ -2,8 +2,10 @@ use std::io;
 use std::sync::Arc;
 use std::time::Instant;
 
+
 use crate::BenchConfig;
 use hdrhistogram::Histogram;
+use crate::bench::Status;
 
 use crate::link::Link;
 use rumqttc::*;
@@ -14,7 +16,7 @@ use tokio::{pin, select, task, time};
 
 pub(crate) struct Connection {
     config: Arc<BenchConfig>,
-    link: Link
+    link: Link,
 }
 
 #[derive(Error, Debug)]
@@ -75,7 +77,7 @@ impl Connection {
             }
         }
 
-        Ok(Connection { config, link})
+        Ok(Connection { config, link })
     }
 
     pub async fn start(&mut self, barrier: Arc<Barrier>) {
@@ -123,6 +125,7 @@ impl Connection {
 
         let size = self.config.max_inflight as usize;
         let mut time_vec: Vec<Option<std::time::Instant>> = vec![None; size+1];
+        let p_sender = self.link.sender;
         
 
         for i in 0..publishers {
@@ -170,13 +173,7 @@ impl Connection {
                                 None => warn!("No publish record for Pkid={:?}", index),
                             };
 
-                            // send progress tick over indi_sender
-                            match &self.link.indi_sender.clone(){
-                                Some(v) => {
-                                    v.clone().send(1).await.unwrap();
-                                },
-                                None=> {},
-                            };
+                            p_sender.send(1).await.unwrap();
 
                         },
                         Incoming::Publish(_publish) => {
@@ -190,11 +187,16 @@ impl Connection {
                         }
                     }
                 },
-                Event::Outgoing(Outgoing::Publish(pkid)) =>{
-                    let index = pkid as usize;
-                    time_vec.insert(index, Some(Instant::now()));
+                Event::Outgoing(v) =>{
+                    match v {
+                        Outgoing::Publish(_pkid) => {
+                            // we are trying to send out a package with pkid `x`.
+                            let index = _pkid as usize;
+                            time_vec.insert(index, Some(Instant::now()));
+                        },
+                        _ => {},
+                    }
                 },
-                _ => {},
             }
 
             if !outgoing_done && acks_count >= acks_expected {
@@ -240,10 +242,10 @@ impl Connection {
         println!("90 percentile         : {}", hist.value_at_quantile(0.90));
         println!("50 percentile         : {}", hist.value_at_quantile(0.5));
 
+        let msg = Status::Hist(hist);
+
         // send the histogram over this channel
-        if let Some(sender) = &self.link.sender {
-            sender.send(hist).await.unwrap();
-        }
+        p_sender.send(msg).await.unwrap();
 
     }
 }
