@@ -123,8 +123,6 @@ impl Connection {
         let mut incoming_count = 0;
         let mut hist = Histogram::<u64>::new(4).unwrap();
 
-        // maps to record Publish and PubAck of messages. PKID acts as key
-        let mut pkids_publish: BTreeMap<u16, std::time::Instant> = BTreeMap::new();
         let mut vector: VecDeque<std::time::Instant> = VecDeque::with_capacity(self.config.max_inflight as usize);
         
 
@@ -155,9 +153,7 @@ impl Connection {
             if self.config.publishers == 0 || self.config.count == 0 {
                 continue;
             }
-
-            // println!("Id = {}, {:?}", id, incoming);
-
+            
             match event {
                 Event::Incoming(v) => {
                     match v {
