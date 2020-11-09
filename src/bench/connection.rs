@@ -123,7 +123,8 @@ impl Connection {
         let mut incoming_count = 0;
         let mut hist = Histogram::<u64>::new(4).unwrap();
 
-        let mut vector: VecDeque<std::time::Instant> = VecDeque::with_capacity(self.config.max_inflight as usize);
+        let size = self.config.max_inflight as usize;
+        let mut time_vec: Vec<Option<std::time::Instant>> = vec![None; size+1];
         
 
         for i in 0..publishers {
@@ -153,16 +154,24 @@ impl Connection {
             if self.config.publishers == 0 || self.config.count == 0 {
                 continue;
             }
-            
+
             match event {
                 Event::Incoming(v) => {
                     match v {
                         Incoming::PubAck(_pkid) => {
                             acks_count += 1;
                             // PubACK received for pkid `x`. Server acknowledged it. 
-                            let publish_time = vector.pop_front().unwrap();
-                            let time_elapsed = Instant::now().duration_since(publish_time).as_millis();
-                            hist.record(time_elapsed as u64).unwrap();
+                            let index =_pkid.pkid as usize;
+
+                            match time_vec[index] {
+                                Some(v) => {
+                                    let time_elapsed = Instant::now().duration_since(v).as_millis();
+                                    hist.record(time_elapsed as u64).unwrap();
+                                    time_vec[index] = None
+                                },
+                                None => warn!("No publish record for Pkid={:?}", index),
+                            };
+
                         },
                         Incoming::Publish(_publish) => {
                             incoming_count += 1;
@@ -179,7 +188,8 @@ impl Connection {
                     match v {
                         Outgoing::Publish(_pkid) => {
                             // we are trying to send out a package with pkid `x`.
-                            vector.push_back(Instant::now());
+                            let index = _pkid as usize;
+                            time_vec.insert(index, Some(Instant::now()));
                         },
                         _ => {},
                     }
