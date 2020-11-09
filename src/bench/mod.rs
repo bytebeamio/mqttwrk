@@ -90,11 +90,6 @@ pub(crate) async fn start(config: BenchConfig) {
         }));
     }
 
-    // loop {
-    //     if handles.next().await.is_none() {
-    //         break;
-    //     }
-    // }
     let pb = ProgressBar::new(total_expected as u64);
     pb.set_style(sty.clone());
     let mut r_cnt = 0;
