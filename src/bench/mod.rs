@@ -20,10 +20,7 @@ pub(crate) async fn start(config: BenchConfig) {
     let barriers_count = config.connections + config.sink;
     let barrier = Arc::new(Barrier::new(barriers_count));
     let mut handles = futures::stream::FuturesUnordered::new();
-    let ack_cnt = config.publishers * config.count;
     let total_expected = config.count * config.publishers * config.connections;
-    let (tt_x, mut rr_x) = async_channel::bounded::<i32>(total_expected);
-    let (tx, rx) = async_channel::bounded::<Histogram<u64>>(config.connections);
     let sty = ProgressStyle::default_bar()
         .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
         .progress_chars("##-");
@@ -64,7 +61,7 @@ pub(crate) async fn start(config: BenchConfig) {
         }));
     }
 
-    let (cc_tx, cc_rx) = async_channel::unbounded::<Status>();
+    let (cc_tx, _) = async_channel::unbounded::<Status>();
     for i in 0..config.sink {
         let barrier = barrier.clone();
         let config = config.clone();
@@ -100,18 +97,8 @@ pub(crate) async fn start(config: BenchConfig) {
         if cnt == config.connections || r_cnt == total_expected{
             break;
         }
-        // tokio::select! {
-        //     Ok(_) = rr_x.recv() => {
-        //         r_cnt += 1;
-        //         pb.inc(1);
-        //     },
-        //     Ok(h) = rx.recv() => {
-        //         cnt += 1;
-        //         hist.add(h).unwrap();
-        //     }
-        // };
-
-       match c_rx.recv().await {
+    
+        match c_rx.recv().await {
             Ok(status) => {
                 match status{
                     Status::Hist(status) => {
@@ -119,13 +106,14 @@ pub(crate) async fn start(config: BenchConfig) {
                         cnt += 1;
                     },
                     Status::Increment(status)=>{
+                        let incr = status as usize;
                         pb.inc(status as u64);
-                        r_cnt += 1;
+                        r_cnt += incr;
                     },
                 }
             },
             Err(e) => {},
-       };
+        };
     }
 
     println!("Aggregate");

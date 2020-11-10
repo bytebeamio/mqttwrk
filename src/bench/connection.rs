@@ -136,6 +136,8 @@ impl Connection {
             });
         }
 
+        let mut increment_cnt = 0;
+
         let mut reconnects: i32 = 0;
         loop {
 
@@ -173,8 +175,12 @@ impl Connection {
                                 },
                                 None => warn!("No publish record for Pkid={:?}", index),
                             };
-                            let msg = Status::Increment(1);
-                            p_sender.send(msg).await.unwrap();
+                            increment_cnt += 1;
+                            if increment_cnt == 10{
+                                let msg = Status::Increment(increment_cnt);
+                                p_sender.send(msg).await.unwrap();
+                                increment_cnt = 0;
+                            }
 
                         },
                         Incoming::Publish(_publish) => {
