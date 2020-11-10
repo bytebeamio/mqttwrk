@@ -26,7 +26,7 @@ pub(crate) async fn start(config: BenchConfig) {
         .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
         .progress_chars("##-");
 
-    let (tx, rx) = async_channel::unbounded::<Status>();
+    let (status_tx, status_rx) = async_channel::unbounded::<Status>();
     // * Spawning too many connections wouldn't lead to `Elapsed` error
     //   in last spawns due to broker accepting connections sequentially
     // * We have to synchronize all subscription with a barrier because
@@ -52,7 +52,7 @@ pub(crate) async fn start(config: BenchConfig) {
             config.ca_file.clone(),
             config.client_cert.clone(),
             config.client_key.clone(),
-            tx.clone(),
+            status_tx.clone(),
         )
         .unwrap();
 
@@ -100,7 +100,7 @@ pub(crate) async fn start(config: BenchConfig) {
             break;
         }
     
-        match rx.recv().await {
+        match status_rx.recv().await {
             Ok(status) => {
                 match status{
                     Status::Hist(status) => {
