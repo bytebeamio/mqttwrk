@@ -143,7 +143,7 @@ impl Connection {
         loop {
             tokio::select!{
                 event = self.link.eventloop.poll() => {
-                    let mm = match event {
+                    let message = match event {
                         Ok(v) => v,
                         Err(e) => {
                             error!("Id = {}, Connection error = {:?}", self.link.id, e);
@@ -158,13 +158,13 @@ impl Connection {
                     if self.config.publishers == 0 || self.config.count == 0 {
                         continue;
                     }
-                    match mm {
+                    match message {
                         Event::Incoming(v) => {
                             match v {
-                                Incoming::PubAck(_pkid) => {
+                                Incoming::PubAck(pkid) => {
                                     acks_count += 1;
                                     // PubACK received for pkid `x`. Server acknowledged it. 
-                                    let index =_pkid.pkid as usize;
+                                    let index =pkid.pkid as usize;
         
                                     match time_vec[index] {
                                         Some(v) => {

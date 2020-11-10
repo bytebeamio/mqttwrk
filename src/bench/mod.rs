@@ -26,7 +26,7 @@ pub(crate) async fn start(config: BenchConfig) {
         .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
         .progress_chars("##-");
 
-    let (c_tx, c_rx) = async_channel::unbounded::<Status>();
+    let (tx, rx) = async_channel::unbounded::<Status>();
     // * Spawning too many connections wouldn't lead to `Elapsed` error
     //   in last spawns due to broker accepting connections sequentially
     // * We have to synchronize all subscription with a barrier because
@@ -52,7 +52,7 @@ pub(crate) async fn start(config: BenchConfig) {
             config.ca_file.clone(),
             config.client_cert.clone(),
             config.client_key.clone(),
-            c_tx.clone(),
+            tx.clone(),
         )
         .unwrap();
 
@@ -62,7 +62,7 @@ pub(crate) async fn start(config: BenchConfig) {
         }));
     }
 
-    let (cc_tx, _) = async_channel::unbounded::<Status>();
+    let (sender_tx, _) = async_channel::unbounded::<Status>();
     for i in 0..config.sink {
         let barrier = barrier.clone();
         let config = config.clone();
@@ -78,7 +78,7 @@ pub(crate) async fn start(config: BenchConfig) {
             config.ca_file.clone(),
             config.client_cert.clone(),
             config.client_key.clone(),
-            cc_tx.clone(),
+            sender_tx.clone(),
         )
         .unwrap();
 
@@ -90,17 +90,17 @@ pub(crate) async fn start(config: BenchConfig) {
 
     let pb = ProgressBar::new(total_expected as u64);
     pb.set_style(sty.clone());
-    let mut r_cnt = 0;
+    let mut ack_rx_cnt = 0;
     let mut cnt = 0;
     let mut hist = Histogram::<u64>::new(4).unwrap();
     
 
     loop {
-        if cnt == config.connections || r_cnt == total_expected{
+        if cnt == config.connections || ack_rx_cnt == total_expected{
             break;
         }
     
-        match c_rx.recv().await {
+        match rx.recv().await {
             Ok(status) => {
                 match status{
                     Status::Hist(status) => {
@@ -110,7 +110,7 @@ pub(crate) async fn start(config: BenchConfig) {
                     Status::Increment(status)=>{
                         let incr = status as usize;
                         pb.inc(status as u64);
-                        r_cnt += incr;
+                        ack_rx_cnt += incr;
                     },
                 }
             },
