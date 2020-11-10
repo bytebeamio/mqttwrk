@@ -125,7 +125,7 @@ impl Connection {
 
         let size = self.config.max_inflight as usize;
         let mut time_vec: Vec<Option<std::time::Instant>> = vec![None; size+1];
-        let p_sender = self.link.sender;
+        let p_sender = &self.link.sender;
         
 
         for i in 0..publishers {
@@ -138,6 +138,7 @@ impl Connection {
 
         let mut reconnects: i32 = 0;
         loop {
+
             let event = match self.link.eventloop.poll().await {
                 Ok(v) => v,
                 Err(e) => {
@@ -172,8 +173,8 @@ impl Connection {
                                 },
                                 None => warn!("No publish record for Pkid={:?}", index),
                             };
-
-                            p_sender.send(1).await.unwrap();
+                            let msg = Status::Increment(1);
+                            p_sender.send(msg).await.unwrap();
 
                         },
                         Incoming::Publish(_publish) => {

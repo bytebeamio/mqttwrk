@@ -100,16 +100,32 @@ pub(crate) async fn start(config: BenchConfig) {
         if cnt == config.connections || r_cnt == total_expected{
             break;
         }
-        tokio::select! {
-            Ok(_) = rr_x.recv() => {
-                r_cnt += 1;
-                pb.inc(1);
+        // tokio::select! {
+        //     Ok(_) = rr_x.recv() => {
+        //         r_cnt += 1;
+        //         pb.inc(1);
+        //     },
+        //     Ok(h) = rx.recv() => {
+        //         cnt += 1;
+        //         hist.add(h).unwrap();
+        //     }
+        // };
+
+       match c_rx.recv().await {
+            Ok(status) => {
+                match status{
+                    Status::Hist(status) => {
+                        hist.add(status).unwrap();
+                        cnt += 1;
+                    },
+                    Status::Increment(status)=>{
+                        pb.inc(status as u64);
+                        r_cnt += 1;
+                    },
+                }
             },
-            Ok(h) = rx.recv() => {
-                cnt += 1;
-                hist.add(h).unwrap();
-            }
-        };
+            Err(e) => {},
+       };
     }
 
     println!("Aggregate");
