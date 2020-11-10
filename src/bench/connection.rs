@@ -139,71 +139,70 @@ impl Connection {
         let mut increment_cnt = 0;
 
         let mut reconnects: i32 = 0;
+        let mut interval = time::interval(time::Duration::from_secs(1));
         loop {
-
-            let event = match self.link.eventloop.poll().await {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("Id = {}, Connection error = {:?}", self.link.id, e);
-                    reconnects += 1;
-                    if reconnects == 1 {
-                        break;
-                    }
-
-                    continue;
-                }
-            };
-
-            // Never exit during idle connection tests
-            if self.config.publishers == 0 || self.config.count == 0 {
-                continue;
-            }
-
-            match event {
-                Event::Incoming(v) => {
-                    match v {
-                        Incoming::PubAck(_pkid) => {
-                            acks_count += 1;
-                            // PubACK received for pkid `x`. Server acknowledged it. 
-                            let index =_pkid.pkid as usize;
-
-                            match time_vec[index] {
-                                Some(v) => {
-                                    let time_elapsed = Instant::now().duration_since(v).as_millis();
-                                    hist.record(time_elapsed as u64).unwrap();
-                                    time_vec[index] = None
-                                },
-                                None => warn!("No publish record for Pkid={:?}", index),
-                            };
-                            increment_cnt += 1;
-                            if increment_cnt == 10{
-                                let msg = Status::Increment(increment_cnt);
-                                p_sender.send(msg).await.unwrap();
-                                increment_cnt = 0;
+            tokio::select!{
+                event = self.link.eventloop.poll() => {
+                    let mm = match event {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("Id = {}, Connection error = {:?}", self.link.id, e);
+                            reconnects += 1;
+                            if reconnects == 1 {
+                                break;
                             }
-
-                        },
-                        Incoming::Publish(_publish) => {
-                            incoming_count += 1;
-                            
-                        },
-                        Incoming::PingResp => {}
-                        incoming => {
-                            error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
-                            break;
+        
+                            continue;
                         }
+                    };
+                    if self.config.publishers == 0 || self.config.count == 0 {
+                        continue;
                     }
-                },
-                Event::Outgoing(v) =>{
-                    match v {
-                        Outgoing::Publish(_pkid) => {
-                            // we are trying to send out a package with pkid `x`.
-                            let index = _pkid as usize;
-                            time_vec.insert(index, Some(Instant::now()));
+                    match mm {
+                        Event::Incoming(v) => {
+                            match v {
+                                Incoming::PubAck(_pkid) => {
+                                    acks_count += 1;
+                                    // PubACK received for pkid `x`. Server acknowledged it. 
+                                    let index =_pkid.pkid as usize;
+        
+                                    match time_vec[index] {
+                                        Some(v) => {
+                                            let time_elapsed = Instant::now().duration_since(v).as_millis();
+                                            hist.record(time_elapsed as u64).unwrap();
+                                            time_vec[index] = None
+                                        },
+                                        None => warn!("No publish record for Pkid={:?}", index),
+                                    };
+                                    increment_cnt += 1;
+                                },
+                                Incoming::Publish(_publish) => {
+                                    incoming_count += 1;
+                                },
+                                Incoming::PingResp => {}
+                                incoming => {
+                                    error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
+                                    break;
+                                }
+                            }
                         },
-                        _ => {},
+                        Event::Outgoing(v) =>{
+                            match v {
+                                Outgoing::Publish(_pkid) => {
+                                    // we are trying to send out a package with pkid `x`.
+                                    let index = _pkid as usize;
+                                    time_vec.insert(index, Some(Instant::now()));
+                                },
+                                _ => {},
+                            }
+                        },
                     }
                 },
+                _ = interval.tick() => {
+                    let msg = Status::Increment(increment_cnt);
+                    p_sender.send(msg).await.unwrap();
+                    increment_cnt = 0;
+                }
             }
 
             if !outgoing_done && acks_count >= acks_expected {

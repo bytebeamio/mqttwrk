@@ -3,6 +3,7 @@ use futures::StreamExt;
 use std::sync::Arc;
 use tokio::sync::Barrier;
 use tokio::task;
+use tokio::time;
 
 
 mod connection;
@@ -93,6 +94,7 @@ pub(crate) async fn start(config: BenchConfig) {
     let mut cnt = 0;
     let mut hist = Histogram::<u64>::new(4).unwrap();
     
+
     loop {
         if cnt == config.connections || r_cnt == total_expected{
             break;
