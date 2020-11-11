@@ -2,7 +2,10 @@ use std::io;
 use std::sync::Arc;
 use std::time::Instant;
 
+
 use crate::BenchConfig;
+use hdrhistogram::Histogram;
+use crate::bench::Status;
 
 use crate::link::Link;
 use rumqttc::*;
@@ -118,6 +121,12 @@ impl Connection {
         let mut incoming_done = false;
         let mut acks_count = 0;
         let mut incoming_count = 0;
+        let mut hist = Histogram::<u64>::new(4).unwrap();
+
+        let size = self.config.max_inflight as usize;
+        let mut time_vec: Vec<Option<std::time::Instant>> = vec![None; size+1];
+        let p_sender = &self.link.sender;
+        
 
         for i in 0..publishers {
             let topic = format!("hello/{}/{}/world", self.link.id, i);
@@ -127,37 +136,72 @@ impl Connection {
             });
         }
 
+        let mut increment_cnt = 0;
+
         let mut reconnects: i32 = 0;
+        let mut interval = time::interval(time::Duration::from_secs(1));
         loop {
-            let event = match self.link.eventloop.poll().await {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("Id = {}, Connection error = {:?}", self.link.id, e);
-                    reconnects += 1;
-                    if reconnects == 1 {
-                        break;
+            tokio::select!{
+                event = self.link.eventloop.poll() => {
+                    let message = match event {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("Id = {}, Connection error = {:?}", self.link.id, e);
+                            reconnects += 1;
+                            if reconnects == 1 {
+                                break;
+                            }
+        
+                            continue;
+                        }
+                    };
+                    if self.config.publishers == 0 || self.config.count == 0 {
+                        continue;
                     }
-
-                    continue;
-                }
-            };
-
-            // Never exit during idle connection tests
-            if self.config.publishers == 0 || self.config.count == 0 {
-                continue;
-            }
-
-            // println!("Id = {}, {:?}", id, incoming);
-
-            if let Event::Incoming(v) = event {
-                match v {
-                    Incoming::PubAck(_pkid) => acks_count += 1,
-                    Incoming::Publish(_publish) => incoming_count += 1,
-                    Incoming::PingResp => {}
-                    incoming => {
-                        error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
-                        break;
+                    match message {
+                        Event::Incoming(v) => {
+                            match v {
+                                Incoming::PubAck(pkid) => {
+                                    acks_count += 1;
+                                    // PubACK received for pkid `x`. Server acknowledged it. 
+                                    let index =pkid.pkid as usize;
+        
+                                    match time_vec[index] {
+                                        Some(v) => {
+                                            let time_elapsed = Instant::now().duration_since(v).as_millis();
+                                            hist.record(time_elapsed as u64).unwrap();
+                                            time_vec[index] = None
+                                        },
+                                        None => warn!("No publish record for Pkid={:?}", index),
+                                    };
+                                    increment_cnt += 1;
+                                },
+                                Incoming::Publish(_publish) => {
+                                    incoming_count += 1;
+                                },
+                                Incoming::PingResp => {}
+                                incoming => {
+                                    error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
+                                    break;
+                                }
+                            }
+                        },
+                        Event::Outgoing(v) =>{
+                            match v {
+                                Outgoing::Publish(_pkid) => {
+                                    // we are trying to send out a package with pkid `x`.
+                                    let index = _pkid as usize;
+                                    time_vec.insert(index, Some(Instant::now()));
+                                },
+                                _ => {},
+                            }
+                        },
                     }
+                },
+                _ = interval.tick() => {
+                    let msg = Status::Increment(increment_cnt);
+                    p_sender.send(msg).await.unwrap();
+                    increment_cnt = 0;
                 }
             }
 
@@ -192,6 +236,23 @@ impl Connection {
             incoming_throughput,
             reconnects,
         );
+        println!("# of samples          : {}", hist.len());
+        println!(
+            "99.999'th percentile  : {}",
+            hist.value_at_quantile(0.999999)
+        );
+        println!(
+            "99.99'th percentile   : {}",
+            hist.value_at_quantile(0.99999)
+        );
+        println!("90 percentile         : {}", hist.value_at_quantile(0.90));
+        println!("50 percentile         : {}", hist.value_at_quantile(0.5));
+
+        let msg = Status::Hist(hist);
+
+        // send the histogram over this channel
+        p_sender.send(msg).await.unwrap();
+
     }
 }
 

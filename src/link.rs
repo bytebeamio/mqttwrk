@@ -1,10 +1,19 @@
 use rumqttc::{AsyncClient, EventLoop, MqttOptions};
 use std::{fs, io};
+use hdrhistogram::Histogram;
+use rumqttc::*;
+
+pub enum Status{
+    Increment(i32),
+    Hist(Histogram<u64>)
+}
+
 
 pub struct Link {
     pub id: String,
     pub client: AsyncClient,
     pub eventloop: EventLoop,
+    pub sender: Sender<Status>,
 }
 
 impl Link {
@@ -18,6 +27,8 @@ impl Link {
         ca_file: Option<String>,
         client_cert_file: Option<String>,
         client_key_file: Option<String>,
+        sender: Sender<Status>,
+
     ) -> io::Result<Link> {
         let mut mqttoptions = MqttOptions::new(id, server, port);
         mqttoptions.set_keep_alive(keep_alive);
@@ -40,6 +51,7 @@ impl Link {
             id: id.to_owned(),
             client,
             eventloop,
+            sender,
         })
     }
 }
