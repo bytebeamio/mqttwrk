@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use crate::BenchConfig;
 
-use crate::link::Link;
 use rumqttc::*;
 use thiserror::Error;
 use tokio::sync::Barrier;
@@ -12,8 +11,9 @@ use tokio::time::Duration;
 use tokio::{pin, select, task};
 
 pub(crate) struct Sink {
+    id: String,
     config: Arc<BenchConfig>,
-    link: Link,
+    eventloop: EventLoop
 }
 
 #[derive(Error, Debug)]
@@ -27,15 +27,16 @@ pub enum SinkError {
 }
 
 impl Sink {
-    pub async fn new(mut link: Link, config: Arc<BenchConfig>) -> Result<Sink, SinkError> {
+    pub async fn new(id: String, config: Arc<BenchConfig>) -> Result<Sink, SinkError> {
         let qos = config.qos;
-        let client = link.client.clone();
+        let (client, mut eventloop) = AsyncClient::new(config.options(&id)?, 10);
+        let subscriber_client = client.clone();
         task::spawn(async move {
-            client.subscribe("#", get_qos(qos)).await.unwrap();
+            subscriber_client.subscribe("#", get_qos(qos)).await.unwrap();
         });
 
         loop {
-            let event = link.eventloop.poll().await?;
+            let event = eventloop.poll().await?;
             if let Event::Incoming(v) = event {
                 match v {
                     Incoming::SubAck(_) => break,
@@ -45,7 +46,7 @@ impl Sink {
             }
         }
 
-        Ok(Sink { config, link })
+        Ok(Sink { id, config, eventloop })
     }
 
     pub async fn start(&mut self, barrier: Arc<Barrier>) {
@@ -56,15 +57,14 @@ impl Sink {
 
         loop {
             select! {
-                _ = self.link.eventloop.poll() => {},
+                _ = self.eventloop.poll() => {},
                 _ = &mut barrier => break,
             }
         }
 
         let count = self.config.count;
         let publishers = self.config.publishers;
-        let subscribers = self.config.subscribers;
-        let id = self.link.id.clone();
+        let id = self.id.clone();
 
         let start = Instant::now();
         let incoming_expected = count * publishers;
@@ -73,10 +73,10 @@ impl Sink {
 
         let mut reconnects: i32 = 0;
         while reconnects < 1 {
-            let event = match self.link.eventloop.poll().await {
+            let event = match self.eventloop.poll().await {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("Id = {}, Connection error = {:?}", self.link.id, e);
+                    error!("Id = {}, Connection error = {:?}", self.id, e);
                     reconnects += 1;
                     continue;
                 }
@@ -113,7 +113,7 @@ impl Sink {
             "Id = {}
             Incoming publishes : Received = {:<7} Throughput = {} messages/s
             Reconnects         : {}",
-            self.link.id, incoming_count, incoming_throughput, reconnects,
+            self.id, incoming_count, incoming_throughput, reconnects,
         );
     }
 }

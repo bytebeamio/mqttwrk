@@ -14,9 +14,10 @@ extern crate log;
 
 mod bench;
 mod console;
-mod link;
 
 use structopt::StructOpt;
+use rumqttc::MqttOptions;
+use std::{fs, io};
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -81,6 +82,28 @@ struct BenchConfig {
     delay: u64,
 }
 
+impl BenchConfig {
+    pub fn options(&self, id: &str) -> io::Result<MqttOptions> {
+        let mut options = MqttOptions::new(id, &self.server, self.port);
+        options.set_keep_alive(self.keep_alive);
+        options.set_inflight(self.max_inflight);
+        options.set_connection_timeout(self.conn_timeout);
+        options.set_max_request_batch(10);
+
+        if let Some(ca_file) = &self.ca_file {
+            options.set_ca(fs::read(ca_file)?);
+        }
+
+        if let Some(client_cert_file) = &self.client_cert {
+            let cert = fs::read(client_cert_file)?;
+            let key = fs::read(&self.client_key.as_ref().unwrap())?;
+            options.set_client_auth(cert, key);
+        }
+
+        Ok(options)
+    }
+}
+
 /// Benchmarks inspired by wrk/wrk2
 #[derive(Debug, StructOpt)]
 struct ConsoleConfig {
@@ -111,6 +134,29 @@ struct ConsoleConfig {
     #[structopt(short = "t", long, default_value = "5")]
     conn_timeout: u64,
 }
+
+impl ConsoleConfig {
+    pub fn options(&self, id: &str) -> io::Result<MqttOptions> {
+        let mut options = MqttOptions::new(id, &self.server, self.port);
+        options.set_keep_alive(self.keep_alive);
+        options.set_inflight(self.max_inflight);
+        options.set_connection_timeout(self.conn_timeout);
+        options.set_max_request_batch(10);
+
+        if let Some(ca_file) = &self.ca_file {
+            options.set_ca(fs::read(ca_file)?);
+        }
+
+        if let Some(client_cert_file) = &self.client_cert {
+            let cert = fs::read(client_cert_file)?;
+            let key = fs::read(&self.client_key.as_ref().unwrap())?;
+            options.set_client_auth(cert, key);
+        }
+
+        Ok(options)
+    }
+}
+
 
 #[tokio::main(core_threads = 4)]
 async fn main() {

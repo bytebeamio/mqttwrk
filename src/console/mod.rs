@@ -1,30 +1,52 @@
-use crate::link::Link;
 use crate::ConsoleConfig;
-use rumqttc::{qos, Event, Outgoing};
+use rumqttc::{qos, Event, Outgoing, Client, MqttOptions};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use std::collections::VecDeque;
-use std::io;
+use std::{io, thread};
+use rand::{thread_rng, Rng};
 use structopt::StructOpt;
+use flume::{bounded, Receiver};
 
 struct Console {
-    link: Link,
+    client: Client,
+    events_rx: Receiver<Event>
 }
 
 impl Console {
-    fn new(link: Link) -> Console {
-        Console { link }
+    fn new(options: MqttOptions) -> Console {
+        let (client, connection) = Client::new(options, 10);
+        let (events_tx, events_rx) = bounded(10);
+
+        thread::spawn(move || {
+            let mut connection = connection;
+            for notification in connection.iter() {
+                match notification {
+                    Ok(event) => {
+                        if let Err(e) = events_tx.send(event) {
+                            println!("{:?}", e);
+                            break;
+                        }
+                    },
+                    Err(e) => {
+                        println!("{:?}", e);
+                        continue
+                    }
+                }
+            }
+        });
+
+        Console { client, events_rx }
     }
 
-    async fn publish(&mut self, topic: &str, q: u8, payload: String) {
-        self.link
+    fn publish(&mut self, topic: &str, q: u8, payload: String) {
+        self
             .client
             .publish(topic, qos(q).unwrap(), false, payload)
-            .await
             .unwrap();
 
         let pkid = loop {
-            match self.link.eventloop.poll().await {
+            match self.events_rx.recv() {
                 Ok(Event::Outgoing(Outgoing::Publish(pkid))) => break pkid,
                 Ok(_) => continue,
                 Err(e) => {
@@ -37,15 +59,14 @@ impl Console {
         println!("Sent = {}", pkid);
     }
 
-    async fn subscribe(&mut self, topic: &str, q: u8) {
-        self.link
+    fn subscribe(&mut self, topic: &str, q: u8) {
+        self
             .client
             .subscribe(topic, qos(q).unwrap())
-            .await
             .unwrap();
 
         loop {
-            match self.link.eventloop.poll().await {
+            match self.events_rx.recv() {
                 Ok(Event::Incoming(event)) => {
                     println!("{:?}", event);
                 }
@@ -89,20 +110,8 @@ struct Subscribe {
 }
 
 pub(crate) async fn start(config: ConsoleConfig) -> io::Result<()> {
-    let mut console = Console::new(
-        Link::new(
-            "mqttwrkconsole",
-            &config.server,
-            config.port,
-            config.keep_alive,
-            config.max_inflight,
-            config.conn_timeout,
-            config.ca_file.clone(),
-            config.client_cert.clone(),
-            config.client_key.clone(),
-        )
-        .unwrap(),
-    );
+    let id = format!("mqttwrkconsole@{}", thread_rng().gen_range(1, 1_000_000));
+    let mut console = Console::new(config.options(&id)?);
 
     let mut rl = Editor::<()>::new();
     if rl.load_history("history.txt").is_err() {
@@ -129,10 +138,9 @@ pub(crate) async fn start(config: ConsoleConfig) -> io::Result<()> {
                     Command::Publish(publish) => {
                         console
                             .publish(&publish.topic, publish.qos, publish.payload)
-                            .await;
                     }
                     Command::Subscribe(subscribe) => {
-                        console.subscribe(&subscribe.filter, subscribe.qos).await;
+                        console.subscribe(&subscribe.filter, subscribe.qos);
                     }
                 }
             }

@@ -7,7 +7,6 @@ use tokio::task;
 mod connection;
 mod sink;
 
-use crate::link::Link;
 use connection::Connection;
 use sink::Sink;
 
@@ -32,21 +31,8 @@ pub(crate) async fn start(config: BenchConfig) {
         let config = config.clone();
 
         let id = format!("rumqtt-{:05}", i);
-        let link = Link::new(
-            &id,
-            &config.server,
-            config.port,
-            config.keep_alive,
-            config.max_inflight,
-            config.conn_timeout,
-            config.ca_file.clone(),
-            config.client_cert.clone(),
-            config.client_key.clone(),
-        )
-        .unwrap();
-
         handles.push(task::spawn(async move {
-            let mut connection = Connection::new(link, config).await.unwrap();
+            let mut connection = Connection::new(id, config).await.unwrap();
             connection.start(barrier).await;
         }));
     }
@@ -56,21 +42,8 @@ pub(crate) async fn start(config: BenchConfig) {
         let config = config.clone();
 
         let id = format!("rumqtt-sink-{:05}", i);
-        let link = Link::new(
-            &id,
-            &config.server,
-            config.port,
-            config.keep_alive,
-            config.max_inflight,
-            config.conn_timeout,
-            config.ca_file.clone(),
-            config.client_cert.clone(),
-            config.client_key.clone(),
-        )
-        .unwrap();
-
         handles.push(task::spawn(async move {
-            let mut sink = Sink::new(link, config).await.unwrap();
+            let mut sink = Sink::new(id, config).await.unwrap();
             sink.start(barrier).await;
         }));
     }

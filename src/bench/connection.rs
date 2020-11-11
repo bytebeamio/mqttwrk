@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use crate::BenchConfig;
 
-use crate::link::Link;
 use rumqttc::*;
 use thiserror::Error;
 use tokio::sync::Barrier;
@@ -12,8 +11,10 @@ use tokio::time::Duration;
 use tokio::{pin, select, task, time};
 
 pub(crate) struct Connection {
+    id: String,
     config: Arc<BenchConfig>,
-    link: Link,
+    client: AsyncClient,
+    eventloop: EventLoop
 }
 
 #[derive(Error, Debug)]
@@ -28,14 +29,16 @@ pub enum ConnectionError {
 
 impl Connection {
     pub async fn new(
-        mut link: Link,
+        id: String,
         config: Arc<BenchConfig>,
     ) -> Result<Connection, ConnectionError> {
-        let client = link.client.clone();
         let subscribers = config.subscribers;
         let publishers = config.publishers;
         let connections = config.connections;
         let qos = config.qos;
+
+        let (client, mut eventloop) = AsyncClient::new(config.options(&id)?, 10);
+        let subscriber_client = client.clone();
 
         // If there are 10 connections with 3 publishers and 2 subscribers,
         // each connection publishes to topics 'hello/rumqtt-{id}/{0, 1, 2}/world'
@@ -53,14 +56,14 @@ impl Connection {
 
             for i in 0..subscribers {
                 let topic = format!("hello/rumqtt-{:05}/+/world", i);
-                client.subscribe(topic, get_qos(qos)).await.unwrap();
+                subscriber_client.subscribe(topic, get_qos(qos)).await.unwrap();
             }
         });
 
         // Handle connection and subscriptions first
         let mut sub_ack_count = 0;
         loop {
-            let event = link.eventloop.poll().await?;
+            let event = eventloop.poll().await?;
             if let Event::Incoming(v) = event {
                 match v {
                     Incoming::SubAck(_) => sub_ack_count += 1,
@@ -74,7 +77,7 @@ impl Connection {
             }
         }
 
-        Ok(Connection { config, link })
+        Ok(Connection { id, config, client, eventloop })
     }
 
     pub async fn start(&mut self, barrier: Arc<Barrier>) {
@@ -88,13 +91,13 @@ impl Connection {
         // println!("await barrier = {:?}", self.id);
         loop {
             select! {
-                _ = self.link.eventloop.poll() => {},
+                _ = self.eventloop.poll() => {},
                 _ = &mut barrier => break,
             }
         }
 
         // println!("done barrier = {:?}", self.id);
-        if self.link.id == "rumqtt-00000" {
+        if self.id == "rumqtt-00000" {
             println!(
                 "Connections & subscriptions ok. Elapsed = {:?}",
                 start.elapsed().as_secs()
@@ -107,7 +110,7 @@ impl Connection {
         let publishers = self.config.publishers;
         let subscribers = self.config.subscribers;
         let delay = self.config.delay;
-        let id = self.link.id.clone();
+        let id = self.id.clone();
 
         let start = Instant::now();
         let acks_expected = count * publishers;
@@ -120,8 +123,8 @@ impl Connection {
         let mut incoming_count = 0;
 
         for i in 0..publishers {
-            let topic = format!("hello/{}/{}/world", self.link.id, i);
-            let client = self.link.client.clone();
+            let topic = format!("hello/{}/{}/world", self.id, i);
+            let client = self.client.clone();
             task::spawn(async move {
                 requests(topic, payload_size, count, client, qos, delay).await;
             });
@@ -129,10 +132,10 @@ impl Connection {
 
         let mut reconnects: i32 = 0;
         loop {
-            let event = match self.link.eventloop.poll().await {
+            let event = match self.eventloop.poll().await {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("Id = {}, Connection error = {:?}", self.link.id, e);
+                    error!("Id = {}, Connection error = {:?}", self.id, e);
                     reconnects += 1;
                     if reconnects == 1 {
                         break;
@@ -185,7 +188,7 @@ impl Connection {
             Outgoing publishes : Received = {:<7} Throughput = {} messages/s
             Incoming publishes : Received = {:<7} Throughput = {} messages/s
             Reconnects         : {}",
-            self.link.id,
+            self.id,
             acks_count,
             outgoing_throughput,
             incoming_count,
