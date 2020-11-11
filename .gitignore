@@ -6,4 +6,3 @@ target
 **/*.rs.bk
 .idea
 out.txt
-history.txt
