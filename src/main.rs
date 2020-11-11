@@ -158,7 +158,7 @@ impl ConsoleConfig {
 }
 
 
-#[tokio::main(core_threads = 4)]
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() {
     pretty_env_logger::init();
 
