@@ -9,6 +9,7 @@ use thiserror::Error;
 use tokio::sync::Barrier;
 use tokio::time::Duration;
 use tokio::{pin, select, task, time};
+use hdrhistogram::Histogram;
 
 pub(crate) struct Connection {
     id: String,
@@ -105,6 +106,7 @@ impl Connection {
         }
 
         let qos = get_qos(self.config.qos);
+        let inflight = self.config.max_inflight;
         let payload_size = self.config.payload_size;
         let count = self.config.count;
         let publishers = self.config.publishers;
@@ -131,6 +133,9 @@ impl Connection {
         }
 
         let mut reconnects: i32 = 0;
+        let mut latencies: Vec<Option<Instant>> = vec![None; inflight as usize +1];
+        let mut histogram = Histogram::<u64>::new(4).unwrap();
+
         loop {
             let event = match self.eventloop.poll().await {
                 Ok(v) => v,
@@ -152,16 +157,26 @@ impl Connection {
 
             // println!("Id = {}, {:?}", id, incoming);
 
-            if let Event::Incoming(v) = event {
-                match v {
-                    Incoming::PubAck(_pkid) => acks_count += 1,
-                    Incoming::Publish(_publish) => incoming_count += 1,
-                    Incoming::PingResp => {}
-                    incoming => {
-                        error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
-                        break;
+            match event {
+                Event::Incoming(v) => {
+                    match v {
+                        Incoming::PubAck(ack) => {
+                            acks_count += 1;
+                            let elapsed = latencies[ack.pkid as usize].unwrap().elapsed();
+                            histogram.record(elapsed.as_millis() as u64).unwrap();
+                        },
+                        Incoming::Publish(_publish) => incoming_count += 1,
+                        Incoming::PingResp => {}
+                        incoming => {
+                            error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
+                            break;
+                        }
                     }
                 }
+                Event::Outgoing(Outgoing::Publish(pkid)) => {
+                    latencies[pkid as usize] = Some(Instant::now());
+                }
+                _ => (),
             }
 
             if !outgoing_done && acks_count >= acks_expected {
@@ -185,6 +200,8 @@ impl Connection {
 
         println!(
             "Id = {}
+            Throughputs
+            ----------------------------
             Outgoing publishes : Received = {:<7} Throughput = {} messages/s
             Incoming publishes : Received = {:<7} Throughput = {} messages/s
             Reconnects         : {}",
@@ -194,6 +211,23 @@ impl Connection {
             incoming_count,
             incoming_throughput,
             reconnects,
+        );
+
+        println!(
+            "
+            Latencies of {} samples
+            ----------------------------
+            100                 : {}
+            99.9999 percentile  : {}
+            99.999 percentile   : {}
+            90 percentile       : {}
+            50 percentile       : {}",
+            histogram.len(),
+            histogram.value_at_percentile(100.0),
+            histogram.value_at_percentile(99.9999),
+            histogram.value_at_percentile(99.999),
+            histogram.value_at_percentile(90.0),
+            histogram.value_at_percentile(50.0),
         );
     }
 }
