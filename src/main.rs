@@ -15,9 +15,9 @@ extern crate log;
 mod bench;
 mod console;
 
-use structopt::StructOpt;
-use rumqttc::MqttOptions;
+use rumqttc::*;
 use std::{fs, io};
+use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -91,13 +91,18 @@ impl BenchConfig {
         options.set_max_request_batch(10);
 
         if let Some(ca_file) = &self.ca_file {
-            options.set_ca(fs::read(ca_file)?);
-        }
+            let ca = fs::read(ca_file)?;
 
-        if let Some(client_cert_file) = &self.client_cert {
-            let cert = fs::read(client_cert_file)?;
-            let key = fs::read(&self.client_key.as_ref().unwrap())?;
-            options.set_client_auth(cert, key);
+            let client_auth = match &self.client_cert {
+                Some(f) => {
+                    let cert = fs::read(f)?;
+                    let key = fs::read(&self.client_key.as_ref().unwrap())?;
+                    Some((cert, Key::RSA(key)))
+                }
+                None => None,
+            };
+
+            options.set_transport(Transport::tls(ca, client_auth, None));
         }
 
         Ok(options)
@@ -144,19 +149,23 @@ impl ConsoleConfig {
         options.set_max_request_batch(10);
 
         if let Some(ca_file) = &self.ca_file {
-            options.set_ca(fs::read(ca_file)?);
-        }
+            let ca = fs::read(ca_file)?;
 
-        if let Some(client_cert_file) = &self.client_cert {
-            let cert = fs::read(client_cert_file)?;
-            let key = fs::read(&self.client_key.as_ref().unwrap())?;
-            options.set_client_auth(cert, key);
+            let client_auth = match &self.client_cert {
+                Some(f) => {
+                    let cert = fs::read(f)?;
+                    let key = fs::read(&self.client_key.as_ref().unwrap())?;
+                    Some((cert, Key::RSA(key)))
+                }
+                None => None,
+            };
+
+            options.set_transport(Transport::tls(ca, client_auth, None));
         }
 
         Ok(options)
     }
 }
-
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() {
