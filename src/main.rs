@@ -15,7 +15,9 @@ extern crate log;
 mod bench;
 mod console;
 
+use pprof::{protos::Message, ProfilerGuard};
 use rumqttc::*;
+use std::io::Write;
 use std::{fs, io};
 use structopt::StructOpt;
 
@@ -172,10 +174,27 @@ async fn main() {
     pretty_env_logger::init();
 
     let config: Config = Config::from_args();
+
+    let guard = pprof::ProfilerGuard::new(100).unwrap();
+
     match config {
         Config::Bench(config) => bench::start(config).await,
         Config::Console(config) => {
             console::start(config).await.unwrap();
         }
     }
+
+    profile("bench.pb", guard);
+}
+
+#[allow(unused)]
+pub fn profile(name: &str, guard: ProfilerGuard) {
+    if let Ok(report) = guard.report().build() {
+        let mut file = fs::File::create(name).unwrap();
+        let profile = report.pprof().unwrap();
+
+        let mut content = Vec::new();
+        profile.encode(&mut content).unwrap();
+        file.write_all(&content).unwrap();
+    };
 }
