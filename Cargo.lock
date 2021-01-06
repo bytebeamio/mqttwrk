@@ -662,8 +662,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "mqtt4bytes"
-version = "0.4.0"
+name = "mqttbytes"
+version = "0.1.0"
 dependencies = [
  "bytes 1.0.0",
 ]
@@ -1016,7 +1016,7 @@ dependencies = [
  "bytes 1.0.0",
  "http",
  "log",
- "mqtt4bytes",
+ "mqttbytes",
  "pollster",
  "thiserror",
  "tokio",
