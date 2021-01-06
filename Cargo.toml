@@ -24,3 +24,5 @@ flume = "0.9"
 structopt = "0.3.20"
 rustyline = "6.3"
 rustyline-derive = "0.3"
+pprof = { version = "0.3", features = ["flamegraph", "protobuf"] }
+prost = "0.6"
