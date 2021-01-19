@@ -90,7 +90,6 @@ impl BenchConfig {
         options.set_keep_alive(self.keep_alive);
         options.set_inflight(self.max_inflight);
         options.set_connection_timeout(self.conn_timeout);
-        options.set_max_request_batch(10);
 
         if let Some(ca_file) = &self.ca_file {
             let ca = fs::read(ca_file)?;
@@ -148,7 +147,6 @@ impl ConsoleConfig {
         options.set_keep_alive(self.keep_alive);
         options.set_inflight(self.max_inflight);
         options.set_connection_timeout(self.conn_timeout);
-        options.set_max_request_batch(10);
 
         if let Some(ca_file) = &self.ca_file {
             let ca = fs::read(ca_file)?;
