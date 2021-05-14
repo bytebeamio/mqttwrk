@@ -717,7 +717,7 @@ dependencies = [
 
 [[package]]
 name = "mqttbytes"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "bytes 1.0.0",
 ]
@@ -1184,7 +1184,7 @@ dependencies = [
 
 [[package]]
 name = "rumqttc"
-version = "0.4.0"
+version = "0.6.0"
 dependencies = [
  "async-channel",
  "bytes 1.0.0",
