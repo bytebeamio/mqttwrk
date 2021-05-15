@@ -2,7 +2,7 @@ use std::io;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::BenchConfig;
+use crate::Config;
 
 use rumqttc::*;
 use thiserror::Error;
@@ -12,8 +12,8 @@ use tokio::{pin, select, task};
 
 pub(crate) struct Sink {
     id: String,
-    config: Arc<BenchConfig>,
-    eventloop: EventLoop
+    config: Arc<Config>,
+    eventloop: EventLoop,
 }
 
 #[derive(Error, Debug)]
@@ -27,12 +27,15 @@ pub enum SinkError {
 }
 
 impl Sink {
-    pub async fn new(id: String, config: Arc<BenchConfig>) -> Result<Sink, SinkError> {
+    pub async fn new(id: String, config: Arc<Config>) -> Result<Sink, SinkError> {
         let qos = config.qos;
         let (client, mut eventloop) = AsyncClient::new(config.options(&id)?, 10);
         let subscriber_client = client.clone();
         task::spawn(async move {
-            subscriber_client.subscribe("#", get_qos(qos)).await.unwrap();
+            subscriber_client
+                .subscribe("#", get_qos(qos))
+                .await
+                .unwrap();
         });
 
         loop {
@@ -46,7 +49,11 @@ impl Sink {
             }
         }
 
-        Ok(Sink { id, config, eventloop })
+        Ok(Sink {
+            id,
+            config,
+            eventloop,
+        })
     }
 
     pub async fn start(&mut self, barrier: Arc<Barrier>) {

@@ -2,20 +2,20 @@ use std::io;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::BenchConfig;
+use crate::Config;
 
+use hdrhistogram::Histogram;
 use rumqttc::*;
 use thiserror::Error;
 use tokio::sync::Barrier;
 use tokio::time::Duration;
 use tokio::{pin, select, task, time};
-use hdrhistogram::Histogram;
 
 pub(crate) struct Connection {
     id: String,
-    config: Arc<BenchConfig>,
+    config: Arc<Config>,
     client: AsyncClient,
-    eventloop: EventLoop
+    eventloop: EventLoop,
 }
 
 #[derive(Error, Debug)]
@@ -29,10 +29,7 @@ pub enum ConnectionError {
 }
 
 impl Connection {
-    pub async fn new(
-        id: String,
-        config: Arc<BenchConfig>,
-    ) -> Result<Connection, ConnectionError> {
+    pub async fn new(id: String, config: Arc<Config>) -> Result<Connection, ConnectionError> {
         let subscribers = config.subscribers;
         let publishers = config.publishers;
         let connections = config.connections;
@@ -57,7 +54,10 @@ impl Connection {
 
             for i in 0..subscribers {
                 let topic = format!("hello/rumqtt-{:05}/+/world", i);
-                subscriber_client.subscribe(topic, get_qos(qos)).await.unwrap();
+                subscriber_client
+                    .subscribe(topic, get_qos(qos))
+                    .await
+                    .unwrap();
             }
         });
 
@@ -78,7 +78,12 @@ impl Connection {
             }
         }
 
-        Ok(Connection { id, config, client, eventloop })
+        Ok(Connection {
+            id,
+            config,
+            client,
+            eventloop,
+        })
     }
 
     pub async fn start(&mut self, barrier: Arc<Barrier>) {
@@ -133,7 +138,7 @@ impl Connection {
         }
 
         let mut reconnects: i32 = 0;
-        let mut latencies: Vec<Option<Instant>> = vec![None; inflight as usize +1];
+        let mut latencies: Vec<Option<Instant>> = vec![None; inflight as usize + 1];
         let mut histogram = Histogram::<u64>::new(4).unwrap();
 
         loop {
@@ -158,21 +163,19 @@ impl Connection {
             // println!("Id = {}, {:?}", id, incoming);
 
             match event {
-                Event::Incoming(v) => {
-                    match v {
-                        Incoming::PubAck(ack) => {
-                            acks_count += 1;
-                            let elapsed = latencies[ack.pkid as usize].unwrap().elapsed();
-                            histogram.record(elapsed.as_millis() as u64).unwrap();
-                        },
-                        Incoming::Publish(_publish) => incoming_count += 1,
-                        Incoming::PingResp => {}
-                        incoming => {
-                            error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
-                            break;
-                        }
+                Event::Incoming(v) => match v {
+                    Incoming::PubAck(ack) => {
+                        acks_count += 1;
+                        let elapsed = latencies[ack.pkid as usize].unwrap().elapsed();
+                        histogram.record(elapsed.as_millis() as u64).unwrap();
                     }
-                }
+                    Incoming::Publish(_publish) => incoming_count += 1,
+                    Incoming::PingResp => {}
+                    incoming => {
+                        error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
+                        break;
+                    }
+                },
                 Event::Outgoing(Outgoing::Publish(pkid)) => {
                     latencies[pkid as usize] = Some(Instant::now());
                 }

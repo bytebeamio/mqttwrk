@@ -1,4 +1,4 @@
-use crate::BenchConfig;
+use crate::Config;
 use futures::StreamExt;
 use std::sync::Arc;
 use tokio::sync::Barrier;
@@ -10,7 +10,7 @@ mod sink;
 use connection::Connection;
 use sink::Sink;
 
-pub(crate) async fn start(config: BenchConfig) {
+pub(crate) async fn start(config: Config) {
     let config = Arc::new(config);
     let barriers_count = config.connections + config.sink;
     let barrier = Arc::new(Barrier::new(barriers_count));
