@@ -1,10 +1,12 @@
-use rumqttc::{MqttOptions, AsyncClient, Incoming, Event, EventLoop, Outgoing, QoS};
-use tokio::task;
 use colored::*;
+use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, QoS};
+use std::time::Duration;
+use tokio::{task, time};
 
 pub async fn start() {
-    idle_connection().await;
-    publishes().await;
+    // idle_connection().await;
+    // publishes().await;
+    subscribe().await;
 }
 
 pub async fn idle_connection() {
@@ -12,13 +14,13 @@ pub async fn idle_connection() {
     let (_client, mut eventloop) = AsyncClient::new(options("test-client", 5, 10), 10);
     connect(&mut eventloop).await;
 
-    for _i in 0..count {
+    for _i in 0..6 {
         match eventloop.poll().await.unwrap() {
             Event::Incoming(Incoming::PingResp) => blue_ln!("Recv ping response"),
             Event::Outgoing(Outgoing::PingReq) => white_ln!("Sent ping request"),
             event => {
                 red_ln!("Unexpected event: {:?}", event);
-                break
+                break;
             }
         }
     }
@@ -31,16 +33,22 @@ pub async fn publishes() {
 
     task::spawn(async move {
         for i in 0..10 {
-            client.publish("hello/1/world", QoS::AtMostOnce, false, vec![i, 2, 3]).await.unwrap();
+            client
+                .publish("hello/1/world", QoS::AtMostOnce, false, vec![i, 2, 3])
+                .await
+                .unwrap();
         }
 
         for i in 0..10 {
-            client.publish("hello/1/world", QoS::AtLeastOnce, false, vec![i, 2, 3]).await.unwrap();
+            client
+                .publish("hello/1/world", QoS::AtLeastOnce, false, vec![i, 2, 3])
+                .await
+                .unwrap();
         }
     });
 
     // 10 qos 0 publishes, 10 qos 1 publishes, 10 pubacks, 2 pingreq, 2 ping resp
-    for _i in 0..34 {
+    for _i in 0..34usize {
         match eventloop.poll().await.unwrap() {
             Event::Incoming(Incoming::PubAck(ack)) => println!("{} ({})", "Recv puback".green(), ack.pkid),
             Event::Outgoing(Outgoing::Publish(pkid)) => println!("{} ({})", "Sent publish".white(), pkid),
@@ -48,7 +56,89 @@ pub async fn publishes() {
             Event::Outgoing(Outgoing::PingReq) => println!("{}", "Sent ping request".white()),
             event => {
                 red_ln!("Unexpected event: {:?}", event);
-                break
+                break;
+            }
+        }
+    }
+}
+
+pub async fn subscribe() {
+    println!(
+        "\n{}\n",
+        "Running subscribe test".yellow().bold().underline()
+    );
+    let (client1, mut eventloop1) = AsyncClient::new(options("test-client-1", 5, 10), 10);
+    connect(&mut eventloop1).await;
+
+    // Client 1 publish task
+    task::spawn(async move {
+        for i in 0..10 {
+            time::sleep(Duration::from_secs(1)).await;
+            client1
+                .publish("hello/1/world", QoS::AtLeastOnce, false, vec![i, 2, 3])
+                .await
+                .unwrap();
+        }
+    });
+
+    // Client 1 incoming data
+    task::spawn(async move {
+        // 10 qos 1 publishes, 10 pubacks, 2 pingreq, 2 ping resp
+        for _i in 0..24usize {
+            match eventloop1.poll().await.unwrap() {
+                Event::Incoming(i) => match i {
+                    Incoming::PubAck(ack) => println!("{} ({})", "1. Recv puback".green(), ack.pkid),
+                    Incoming::PingResp => println!("{}", "1. Recv ping response".green()),
+                    event => {
+                        red_ln!("Unexpected incoming event: {:?}", event);
+                        break;
+                    }
+                }
+                Event::Outgoing(o) => match o {
+                    Outgoing::Publish(pkid) => println!("{} ({})", "1. Sent publish".white(), pkid),
+                    Outgoing::PingResp => println!("{}", "1. Sent ping request".white()),
+                    event => {
+                        red_ln!("Unexpected outgoing event: {:?}", event);
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    let (client2, mut eventloop2) = AsyncClient::new(options("test-client-2", 5, 10), 10);
+    connect(&mut eventloop2).await;
+    client2
+        .subscribe("hello/+/world", QoS::AtLeastOnce)
+        .await
+        .unwrap();
+
+    // 10 qos 1 publishes, 10 pubacks, 2 pingreq, 2 ping resp
+    for _i in 0..24usize {
+        // 1 outgoing subscribe
+        // 1 incoming suback
+        // 10 incoming qos 1 publishes
+        // 10 outgoing pubacks,
+        // 2 outgoing pingreq,
+        // 2 incoming pingresp
+        match eventloop2.poll().await.unwrap() {
+            Event::Incoming(i) => match i {
+                Incoming::SubAck(ack) => println!("{} ({})", "1. Recv suback".green(), ack.pkid),
+                Incoming::Publish(p) => println!("{} ({})", "2. Recv publish".green(), p.pkid),
+                Incoming::PingResp => println!("{}", "1. Recv ping response".green()),
+                event => {
+                    red_ln!("Unexpected incoming event: {:?}", event);
+                    break;
+                }
+            }
+            Event::Outgoing(o) => match o {
+                Outgoing::Subscribe(pkid) => println!("{} ({})", "2. Sent subscribe".white(), pkid),
+                Outgoing::PubAck(pkid) => println!("{} ({})", "2. Sent puback".white(), pkid),
+                Outgoing::PingReq => println!("{}", "1. Sent ping request".white()),
+                event => {
+                    red_ln!("Unexpected outgoing event: {:?}", event);
+                    break;
+                }
             }
         }
     }
@@ -59,7 +149,7 @@ async fn connect(eventloop: &mut EventLoop) {
     if let Event::Incoming(v) = event {
         match v {
             Incoming::ConnAck(_) => return,
-            incoming => unreachable!("Expecting connack packet. Received = {:?}", incoming)
+            incoming => unreachable!("Expecting connack packet. Received = {:?}", incoming),
         }
     }
 }
