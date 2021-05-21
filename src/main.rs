@@ -32,8 +32,8 @@ struct Config {
     /// size of payload
     #[structopt(short = "m", long, default_value = "100")]
     payload_size: usize,
-    /// number of messages
-    #[structopt(short = "n", long, default_value = "1000000")]
+    /// number of messages (n = 0 is for idle connection to test pings)
+    #[structopt(short = "n", long, default_value = "100")]
     count: usize,
     /// server
     #[structopt(short = "h", long, default_value = "localhost")]
@@ -60,17 +60,8 @@ struct Config {
     #[structopt(short = "t", long, default_value = "5")]
     conn_timeout: u64,
     /// qos, default 1
-    #[structopt(short = "1", long, default_value = "1")]
+    #[structopt(short = "q", long, default_value = "1")]
     qos: i16,
-    /// number of publishers per connection, default 1
-    #[structopt(short = "x", long, default_value = "1")]
-    publishers: usize,
-    /// number of subscribers per connection, default 1
-    #[structopt(short = "y", long, default_value = "0")]
-    subscribers: usize,
-    /// sink connection 1
-    #[structopt(short = "s", long, default_value = "1")]
-    sink: usize,
     /// delay in between each request in secs
     #[structopt(short = "d", long, default_value = "0")]
     delay: u64,
@@ -85,7 +76,6 @@ impl Config {
 
         if let Some(ca_file) = &self.ca_file {
             let ca = fs::read(ca_file)?;
-
             let client_auth = match &self.client_cert {
                 Some(f) => {
                     let cert = fs::read(f)?;
