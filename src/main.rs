@@ -11,21 +11,29 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate colour;
 
 mod bench;
+mod test;
 
 use pprof::{protos::Message, ProfilerGuard};
-use rumqttc::*;
 use std::io::Write;
-use std::{fs, io};
 use structopt::StructOpt;
+use std::fs;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
-    name = "mqttwrk",
-    about = "A MQTT server bench marking tool inspired by wrk."
+name = "mqttwrk",
+about = "A MQTT server bench marking tool inspired by wrk."
 )]
-struct Config {
+enum Config {
+    Bench(BenchConfig),
+    Test,
+}
+
+#[derive(Debug, StructOpt)]
+struct BenchConfig {
     /// number of connections
     #[structopt(short, long, default_value = "1")]
     connections: usize,
@@ -67,39 +75,20 @@ struct Config {
     delay: u64,
 }
 
-impl Config {
-    pub fn options(&self, id: &str) -> io::Result<MqttOptions> {
-        let mut options = MqttOptions::new(id, &self.server, self.port);
-        options.set_keep_alive(self.keep_alive);
-        options.set_inflight(self.max_inflight);
-        options.set_connection_timeout(self.conn_timeout);
-
-        if let Some(ca_file) = &self.ca_file {
-            let ca = fs::read(ca_file)?;
-            let client_auth = match &self.client_cert {
-                Some(f) => {
-                    let cert = fs::read(f)?;
-                    let key = fs::read(&self.client_key.as_ref().unwrap())?;
-                    Some((cert, Key::RSA(key)))
-                }
-                None => None,
-            };
-
-            options.set_transport(Transport::tls(ca, client_auth, None));
-        }
-
-        Ok(options)
-    }
-}
-
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() {
     pretty_env_logger::init();
     let config: Config = Config::from_args();
-    let guard = pprof::ProfilerGuard::new(100).unwrap();
-
-    bench::start(config).await;
-    profile("bench.pb", guard);
+    match config {
+        Config::Bench(config) => {
+            let guard = pprof::ProfilerGuard::new(100).unwrap();
+            bench::start(config).await;
+            profile("bench.pb", guard);
+        },
+        Config::Test => {
+            test::start().await;
+        }
+    }
 }
 
 #[allow(unused)]

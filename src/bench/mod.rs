@@ -1,4 +1,4 @@
-use crate::Config;
+use crate::BenchConfig;
 use futures::StreamExt;
 use std::sync::Arc;
 use tokio::task;
@@ -7,7 +7,7 @@ mod connection;
 
 use connection::Connection;
 
-pub(crate) async fn start(config: Config) {
+pub(crate) async fn start(config: BenchConfig) {
     let config = Arc::new(config);
     let mut handles = futures::stream::FuturesUnordered::new();
 

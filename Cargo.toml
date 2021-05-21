@@ -25,3 +25,5 @@ structopt = "0.3.20"
 rustyline = "6.3"
 rustyline-derive = "0.3"
 pprof = { version = "0.4", features = ["flamegraph", "protobuf"] }
+colour = "0.6.0"
+colored = "2.0.0"

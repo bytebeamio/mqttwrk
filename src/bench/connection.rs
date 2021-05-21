@@ -1,8 +1,8 @@
-use std::io;
+use std::{io, fs};
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::Config;
+use crate::BenchConfig;
 
 use hdrhistogram::Histogram;
 use rumqttc::*;
@@ -12,7 +12,7 @@ use tokio::{task, time};
 
 pub(crate) struct Connection {
     id: String,
-    config: Arc<Config>,
+    config: Arc<BenchConfig>,
     client: AsyncClient,
     eventloop: EventLoop,
 }
@@ -28,8 +28,8 @@ pub enum ConnectionError {
 }
 
 impl Connection {
-    pub async fn new(id: String, config: Arc<Config>) -> Result<Connection, ConnectionError> {
-        let (client, mut eventloop) = AsyncClient::new(config.options(&id)?, 10);
+    pub async fn new(id: String, config: Arc<BenchConfig>) -> Result<Connection, ConnectionError> {
+        let (client, mut eventloop) = AsyncClient::new(options(config.clone(), &id)?, 10);
 
         // Handle connection and subscriptions first
         loop {
@@ -202,4 +202,27 @@ fn get_qos(qos: i16) -> QoS {
         2 => QoS::ExactlyOnce,
         _ => QoS::AtLeastOnce,
     }
+}
+
+fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOptions> {
+    let mut options = MqttOptions::new(id, &config.server, config.port);
+    options.set_keep_alive(config.keep_alive);
+    options.set_inflight(config.max_inflight);
+    options.set_connection_timeout(config.conn_timeout);
+
+    if let Some(ca_file) = &config.ca_file {
+        let ca = fs::read(ca_file)?;
+        let client_auth = match &config.client_cert {
+            Some(f) => {
+                let cert = fs::read(f)?;
+                let key = fs::read(&config.client_key.as_ref().unwrap())?;
+                Some((cert, Key::RSA(key)))
+            }
+            None => None,
+        };
+
+        options.set_transport(Transport::tls(ca, client_auth, None));
+    }
+
+    Ok(options)
 }
