@@ -187,9 +187,7 @@ async fn requests(
     for _i in 0..count {
         let payload = vec![0; payload_size];
         if let Some(interval) = &mut interval {
-            dbg!();
             interval.tick().await;
-            dbg!();
         }
 
         // These errors are usually due to eventloop task being dead. We can ignore the
