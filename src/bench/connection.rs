@@ -1,6 +1,6 @@
-use std::{io, fs};
 use std::sync::Arc;
 use std::time::Instant;
+use std::{fs, io};
 
 use crate::BenchConfig;
 
@@ -33,10 +33,22 @@ impl Connection {
 
         // Handle connection and subscriptions first
         loop {
-            let event = eventloop.poll().await?;
+            let event = match eventloop.poll().await {
+                Ok(v) => v,
+                Err(rumqttc::ConnectionError::Timeout(_)) => {
+                    println!("{} reconnecting", id);
+                    time::sleep(Duration::from_secs(1)).await;
+                    continue;
+                }
+                Err(e) => return Err(e.into()),
+            };
+
             if let Event::Incoming(v) = event {
                 match v {
-                    Incoming::ConnAck(_) => break,
+                    Incoming::ConnAck(_) => {
+                        println!("{} connected", id);
+                        break;
+                    }
                     incoming => return Err(ConnectionError::WrongPacket(incoming)),
                 }
             }
@@ -55,7 +67,7 @@ impl Connection {
         let inflight = self.config.max_inflight;
         let payload_size = self.config.payload_size;
         let count = self.config.count;
-        let delay = self.config.delay;
+        let rate = self.config.rate;
         let id = self.id.clone();
 
         let start = Instant::now();
@@ -69,6 +81,8 @@ impl Connection {
         // If publish count is 0, don't publish. This is an idle connection
         // which can be used to test pings
         if count != 0 {
+            // delay between messages in milliseconds
+            let delay = if rate == 0 { 0 } else { 1000 / rate };
             task::spawn(async move {
                 requests(topic, payload_size, count, client, qos, delay).await;
             });
@@ -167,13 +181,15 @@ async fn requests(
 ) {
     let mut interval = match delay {
         0 => None,
-        delay => Some(time::interval(time::Duration::from_secs(delay))),
+        delay => Some(time::interval(time::Duration::from_millis(delay))),
     };
 
     for _i in 0..count {
         let payload = vec![0; payload_size];
         if let Some(interval) = &mut interval {
+            dbg!();
             interval.tick().await;
+            dbg!();
         }
 
         // These errors are usually due to eventloop task being dead. We can ignore the

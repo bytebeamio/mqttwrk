@@ -70,9 +70,9 @@ struct BenchConfig {
     /// qos, default 1
     #[structopt(short = "q", long, default_value = "1")]
     qos: i16,
-    /// delay in between each request in secs
-    #[structopt(short = "d", long, default_value = "0")]
-    delay: u64,
+    /// message rate. 0 => no throttle
+    #[structopt(short = "r", long, default_value = "0")]
+    rate: u64,
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
