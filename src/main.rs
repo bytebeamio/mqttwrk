@@ -34,9 +34,12 @@ enum Config {
 
 #[derive(Debug, StructOpt)]
 struct BenchConfig {
-    /// number of connections
-    #[structopt(short, long, default_value = "1")]
-    connections: usize,
+    // number of publishers
+    #[structopt(long = "pub_n", default_value = "1")]
+    publishers: usize,
+    // number of subscribers
+    #[structopt(long = "sub_n", default_value = "1")]
+    subscribers: usize,
     /// size of payload
     #[structopt(short = "m", long, default_value = "100")]
     payload_size: usize,
@@ -67,9 +70,12 @@ struct BenchConfig {
     /// connection_timeout
     #[structopt(short = "t", long, default_value = "5")]
     conn_timeout: u64,
-    /// qos, default 1
-    #[structopt(short = "q", long, default_value = "1")]
-    qos: i16,
+    /// qos, default 0
+    #[structopt(long = "pub_q", default_value = "0")]
+    publish_qos: i16,
+    /// qos, default 0
+    #[structopt(long = "sub_q", default_value = "0")]
+    subscribe_qos: i16,
     /// delay in between each request in secs
     #[structopt(short = "d", long, default_value = "0")]
     delay: u64,
