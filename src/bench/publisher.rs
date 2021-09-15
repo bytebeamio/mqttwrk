@@ -1,16 +1,15 @@
 use std::{fs, io, sync::Arc, time::Instant};
 
 use hdrhistogram::Histogram;
-use rumqttc::{AsyncClient, Event, EventLoop, Incoming, Outgoing, QoS};
+use rumqttc::{
+    AsyncClient, Event, EventLoop, Incoming, Key, MqttOptions, Outgoing, QoS, Transport,
+};
 use tokio::{
     task,
     time::{self, Duration},
 };
 
-use crate::{
-    bench::{get_qos, options, ConnectionError},
-    BenchConfig,
-};
+use crate::{bench::ConnectionError, BenchConfig};
 
 pub struct Publisher {
     id: String,

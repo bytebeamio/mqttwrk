@@ -11,6 +11,7 @@ use crate::{
 pub struct Subscriber {
     id: String,
     config: Arc<BenchConfig>,
+    #[allow(dead_code)]
     client: AsyncClient,
     eventloop: EventLoop,
 }
