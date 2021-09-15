@@ -1,8 +1,11 @@
-use std::{sync::Arc, time::Instant};
+use std::{fs, io, sync::Arc, time::Instant};
 
 use hdrhistogram::Histogram;
-use rumqttc::{AsyncClient, EventLoop, Event, Incoming, Outgoing, QoS};
-use tokio::{task, time::{self, Duration}};
+use rumqttc::{AsyncClient, Event, EventLoop, Incoming, Outgoing, QoS};
+use tokio::{
+    task,
+    time::{self, Duration},
+};
 
 use crate::{
     bench::{get_qos, options, ConnectionError},
@@ -17,14 +20,29 @@ pub struct Publisher {
 }
 
 impl Publisher {
-    pub(crate) async fn new(id: String, config: Arc<BenchConfig>) -> Result<Publisher, ConnectionError> {
+    pub(crate) async fn new(
+        id: String,
+        config: Arc<BenchConfig>,
+    ) -> Result<Publisher, ConnectionError> {
         let (client, mut eventloop) = AsyncClient::new(options(config.clone(), &id)?, 10);
 
         loop {
-            let event = eventloop.poll().await?;
+            let event = match eventloop.poll().await {
+                Ok(v) => v,
+                Err(rumqttc::ConnectionError::Timeout(_)) => {
+                    println!("{} reconnecting", id);
+                    time::sleep(Duration::from_secs(1)).await;
+                    continue;
+                }
+                Err(e) => return Err(e.into()),
+            };
+
             if let Event::Incoming(v) = event {
                 match v {
-                    Incoming::ConnAck(_) => break,
+                    Incoming::ConnAck(_) => {
+                        println!("{} connected", id);
+                        break;
+                    }
                     incoming => return Err(ConnectionError::WrongPacket(incoming)),
                 }
             }
@@ -43,7 +61,7 @@ impl Publisher {
         let inflight = self.config.max_inflight;
         let payload_size = self.config.payload_size;
         let count = self.config.count;
-        let delay = self.config.delay;
+        let rate = self.config.rate;
         let id = self.id.clone();
 
         let start = Instant::now();
@@ -57,6 +75,8 @@ impl Publisher {
         // If publish count is 0, don't publish. This is an idle connection
         // which can be used to test pings
         if count != 0 {
+            // delay between messages in milliseconds
+            let delay = if rate == 0 { 0 } else { 1000 / rate };
             task::spawn(async move {
                 requests(topic, payload_size, count, client, qos, delay).await;
             });
@@ -162,7 +182,7 @@ async fn requests(
 ) {
     let mut interval = match delay {
         0 => None,
-        delay => Some(time::interval(time::Duration::from_secs(delay))),
+        delay => Some(time::interval(time::Duration::from_millis(delay))),
     };
 
     for i in 0..count {
@@ -182,8 +202,44 @@ async fn requests(
 
     if qos == QoS::AtMostOnce {
         let payload = vec![0; payload_size];
-        if let Err(_e) = client.publish(topic.as_str(), QoS::AtLeastOnce, false, payload).await {
+        if let Err(_e) = client
+            .publish(topic.as_str(), QoS::AtLeastOnce, false, payload)
+            .await
+        {
             return;
         }
     }
+}
+
+/// get QoS level. Default is AtLeastOnce.
+fn get_qos(qos: i16) -> QoS {
+    match qos {
+        0 => QoS::AtMostOnce,
+        1 => QoS::AtLeastOnce,
+        2 => QoS::ExactlyOnce,
+        _ => QoS::AtLeastOnce,
+    }
+}
+
+fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOptions> {
+    let mut options = MqttOptions::new(id, &config.server, config.port);
+    options.set_keep_alive(config.keep_alive);
+    options.set_inflight(config.max_inflight);
+    options.set_connection_timeout(config.conn_timeout);
+
+    if let Some(ca_file) = &config.ca_file {
+        let ca = fs::read(ca_file)?;
+        let client_auth = match &config.client_cert {
+            Some(f) => {
+                let cert = fs::read(f)?;
+                let key = fs::read(&config.client_key.as_ref().unwrap())?;
+                Some((cert, Key::RSA(key)))
+            }
+            None => None,
+        };
+
+        options.set_transport(Transport::tls(ca, client_auth, None));
+    }
+
+    Ok(options)
 }

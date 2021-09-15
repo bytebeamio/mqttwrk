@@ -63,10 +63,7 @@ pub async fn publishes() {
 }
 
 pub async fn subscribe() {
-    println!(
-        "\n{}\n",
-        "Running subscribe test".yellow().bold().underline()
-    );
+    println!("\n{}\n", "Running subscribe test".yellow().bold().underline());
     let (client1, mut eventloop1) = AsyncClient::new(options("test-client-1", 5, 10), 10);
     connect(&mut eventloop1).await;
 
@@ -96,7 +93,7 @@ pub async fn subscribe() {
                 }
                 Event::Outgoing(o) => match o {
                     Outgoing::Publish(pkid) => println!("{} ({})", "1. Sent publish".white(), pkid),
-                    Outgoing::PingResp => println!("{}", "1. Sent ping request".white()),
+                    Outgoing::PingReq => println!("{}", "1. Sent ping request".white()),
                     event => {
                         red_ln!("Unexpected outgoing event: {:?}", event);
                         break;
@@ -123,9 +120,9 @@ pub async fn subscribe() {
         // 2 incoming pingresp
         match eventloop2.poll().await.unwrap() {
             Event::Incoming(i) => match i {
-                Incoming::SubAck(ack) => println!("{} ({})", "1. Recv suback".green(), ack.pkid),
+                Incoming::SubAck(ack) => println!("{} ({})", "2. Recv suback".green(), ack.pkid),
                 Incoming::Publish(p) => println!("{} ({})", "2. Recv publish".green(), p.pkid),
-                Incoming::PingResp => println!("{}", "1. Recv ping response".green()),
+                Incoming::PingResp => println!("{}", "2. Recv ping response".green()),
                 event => {
                     red_ln!("Unexpected incoming event: {:?}", event);
                     break;
@@ -134,7 +131,7 @@ pub async fn subscribe() {
             Event::Outgoing(o) => match o {
                 Outgoing::Subscribe(pkid) => println!("{} ({})", "2. Sent subscribe".white(), pkid),
                 Outgoing::PubAck(pkid) => println!("{} ({})", "2. Sent puback".white(), pkid),
-                Outgoing::PingReq => println!("{}", "1. Sent ping request".white()),
+                Outgoing::PingReq => println!("{}", "2.. Sent ping request".white()),
                 event => {
                     red_ln!("Unexpected outgoing event: {:?}", event);
                     break;
@@ -159,5 +156,6 @@ fn options(id: &str, keep_alive: u16, max_inflight: u16) -> MqttOptions {
     options.set_keep_alive(keep_alive);
     options.set_inflight(max_inflight);
     options.set_connection_timeout(10);
+    options.set_clean_session(false);
     options
 }
