@@ -121,7 +121,9 @@ impl Publisher {
                         };
                         histogram.record(elapsed.as_millis() as u64).unwrap();
                     }
-                    Incoming::PingResp => {}
+                    Incoming::PingResp => {
+                        debug!("ping response")
+                    }
                     incoming => {
                         error!("Id = {}, Unexpected incoming packet = {:?}", id, incoming);
                         break;
@@ -129,6 +131,9 @@ impl Publisher {
                 },
                 Event::Outgoing(Outgoing::Publish(pkid)) => {
                     latencies[pkid as usize] = Some(Instant::now());
+                }
+                Event::Outgoing(Outgoing::PingReq) => {
+                    debug!("ping request") 
                 }
                 _ => (),
             }
@@ -145,7 +150,7 @@ impl Publisher {
             "Id = {}
             Throughputs
             ----------------------------
-            Outgoing publishes : Received = {:<7} Throughput = {} messages/s
+            Outgoing publishes : {:<7} Throughput = {} messages/s
             Reconnects         : {}
 
             Latencies of {} samples

@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use hdrhistogram::Histogram;
-use rumqttc::{AsyncClient, Event, EventLoop, Incoming};
+use rumqttc::{AsyncClient, Event, EventLoop, Incoming, Outgoing};
 
 use crate::{
     bench::{get_qos, options, ConnectionError},
@@ -17,7 +17,10 @@ pub struct Subscriber {
 }
 
 impl Subscriber {
-    pub(crate) async fn new(id: String, config: Arc<BenchConfig>) -> Result<Subscriber, ConnectionError> {
+    pub(crate) async fn new(
+        id: String,
+        config: Arc<BenchConfig>,
+    ) -> Result<Subscriber, ConnectionError> {
         let (client, mut eventloop) = AsyncClient::new(options(config.clone(), &id)?, 10);
 
         // waiting for connection
@@ -56,9 +59,11 @@ impl Subscriber {
     }
 
     pub(crate) async fn start(&mut self) {
-        let required_publish_count = self.config.count;
+        let required_publish_count = self.config.count * self.config.publishers;
         // total number of publishes received
-        let mut count = 0;
+        let mut publish_count = 0;
+        // total number of pubacks sent
+        let mut puback_count = 0;
         // when the very first publish arrived
         let mut start = Instant::now();
         // when the latest publish arrived
@@ -85,21 +90,29 @@ impl Subscriber {
 
             match event {
                 Event::Incoming(Incoming::Publish(_)) => {
-                    count += 1;
+                    publish_count += 1;
                     start = Instant::now();
                     last_publish = start;
                     break;
                 }
-                Event::Incoming(Incoming::PingResp) | Event::Outgoing(_) => {}
-                incoming => {
-                    error!("Id = {}, Unexpected incoming packet = {:?}", self.id, incoming);
+                Event::Incoming(Incoming::PingResp) => {
+                    debug!("ping response");
+                }
+                Event::Outgoing(Outgoing::PingReq) => {
+                    debug!("ping request")
+                }
+                Event::Outgoing(Outgoing::PubAck(_)) => {
+                    puback_count += 1;
+                }
+                packet => {
+                    error!("Id = {}, Unexpected packet = {:?}", self.id, packet,);
                     continue;
                 }
             }
         }
 
         // for remainging publishes
-        while count < required_publish_count {
+        while publish_count < required_publish_count {
             let event = match self.eventloop.poll().await {
                 Ok(v) => v,
                 Err(e) => {
@@ -112,28 +125,32 @@ impl Subscriber {
                 }
             };
 
-            debug!("Id = {}, {:?}, count = {}", self.id, event, count);
+            debug!("Id = {}, {:?}, count = {}", self.id, event, publish_count);
 
             match event {
                 Event::Incoming(Incoming::Publish(_)) => {
-                    count += 1;
+                    publish_count += 1;
                     histogram
                         .record(last_publish.elapsed().as_millis() as u64)
                         .unwrap();
                     last_publish = Instant::now();
                 }
                 Event::Incoming(Incoming::PingResp) | Event::Outgoing(_) => {}
-                incoming => error!("Id = {}, Unexpected incoming packet = {:?}", self.id, incoming),
+                incoming => error!(
+                    "Id = {}, Unexpected incoming packet = {:?}",
+                    self.id, incoming
+                ),
             }
         }
 
-        let outgoing_throughput = (count * 1000) as f32 / (last_publish - start).as_millis() as f32;
+        let outgoing_throughput = (publish_count * 1000) as f32 / (last_publish - start).as_millis() as f32;
 
         println!(
             "Id = {}
             Throughputs
             ----------------------------
-            Outgoing publishes : Received = {:<7} Throughput = {} messages/s
+            Incoming publishes : {:<7} Throughput = {} messages/s
+            Outgoing pubacks   : Sent = {}
             Reconnects         : {}
 
             Latencies of {} samples
@@ -145,8 +162,9 @@ impl Subscriber {
             50 percentile       : {}
             ",
             self.id,
-            count,
+            publish_count,
             outgoing_throughput,
+            puback_count,
             reconnects,
             histogram.len(),
             histogram.value_at_percentile(100.0),

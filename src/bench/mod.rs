@@ -28,7 +28,7 @@ pub(crate) async fn start(config: BenchConfig) {
     // spawning subscribers
     for i in 0..config.subscribers {
         let config = Arc::clone(&config);
-        let id = format!("rumqtt_sub-{:05}", i);
+        let id = format!("sub-{:05}", i);
         let mut subscriber = subscriber::Subscriber::new(id, config).await.unwrap();
         handles.push(task::spawn(async move {
             subscriber.start().await;
@@ -38,7 +38,7 @@ pub(crate) async fn start(config: BenchConfig) {
     // spawing publishers
     for i in 0..config.publishers {
         let config = Arc::clone(&config);
-        let id = format!("rumqtt_pub-{:05}", i);
+        let id = format!("pub-{:05}", i);
         let mut publisher = publisher::Publisher::new(id, config).await.unwrap();
         handles.push(task::spawn(async move {
             publisher.start().await;
