@@ -9,6 +9,7 @@ pub async fn start() {
     subscribe().await;
 }
 
+#[allow(dead_code)]
 pub async fn idle_connection() {
     println!("\n{}\n", "Running ping test".yellow().bold().underline());
     let (_client, mut eventloop) = AsyncClient::new(options("test-client", 5, 10), 10);
@@ -26,6 +27,7 @@ pub async fn idle_connection() {
     }
 }
 
+#[allow(dead_code)]
 pub async fn publishes() {
     println!("\n{}\n", "Running publish test".yellow().bold().underline());
     let (client, mut eventloop) = AsyncClient::new(options("test-client", 5, 10), 10);

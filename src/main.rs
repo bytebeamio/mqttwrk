@@ -18,14 +18,14 @@ mod bench;
 mod test;
 
 use pprof::{protos::Message, ProfilerGuard};
+use std::fs;
 use std::io::Write;
 use structopt::StructOpt;
-use std::fs;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
-name = "mqttwrk",
-about = "A MQTT server bench marking tool inspired by wrk."
+    name = "mqttwrk",
+    about = "A MQTT server bench marking tool inspired by wrk."
 )]
 enum Config {
     Bench(BenchConfig),
@@ -34,10 +34,6 @@ enum Config {
 
 #[derive(Debug, StructOpt)]
 struct BenchConfig {
-    /// number of connections
-    #[structopt(short, long, default_value = "1")]
-    connections: usize,
-    /// size of payload
     #[structopt(short = "m", long, default_value = "100")]
     payload_size: usize,
     /// number of messages (n = 0 is for idle connection to test pings)
@@ -49,6 +45,19 @@ struct BenchConfig {
     /// port
     #[structopt(short = "p", long, default_value = "1883")]
     port: u16,
+    // number of publishers
+    #[structopt(short = "a", long = "pubs", default_value = "1")]
+    publishers: usize,
+    // number of subscribers
+    #[structopt(short = "b", long = "subs", default_value = "0")]
+    subscribers: usize,
+    /// qos, default 0
+    #[structopt(short = "x", long = "pub_q", default_value = "1")]
+    publish_qos: i16,
+    /// qos, default 0
+    #[structopt(short = "y", long = "sub_q", default_value = "1")]
+    subscribe_qos: i16,
+    /// size of payload
     /// keep alive
     #[structopt(short = "k", long, default_value = "10")]
     keep_alive: u16,
@@ -67,9 +76,6 @@ struct BenchConfig {
     /// connection_timeout
     #[structopt(short = "t", long, default_value = "5")]
     conn_timeout: u64,
-    /// qos, default 1
-    #[structopt(short = "q", long, default_value = "1")]
-    qos: i16,
     /// message rate. 0 => no throttle
     #[structopt(short = "r", long, default_value = "0")]
     rate: u64,
@@ -84,7 +90,7 @@ async fn main() {
             let guard = pprof::ProfilerGuard::new(100).unwrap();
             bench::start(config).await;
             profile("bench.pb", guard);
-        },
+        }
         Config::Test => {
             test::start().await;
         }
