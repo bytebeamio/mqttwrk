@@ -15,6 +15,7 @@ extern crate log;
 extern crate colour;
 
 mod bench;
+mod round;
 mod test;
 
 use pprof::{protos::Message, ProfilerGuard};
@@ -29,6 +30,7 @@ use structopt::StructOpt;
 )]
 enum Config {
     Bench(BenchConfig),
+    Round(RoundConfig),
     Test,
 }
 
@@ -81,20 +83,15 @@ struct BenchConfig {
 struct RoundConfig {
     #[structopt(short = "c", long = "connections")]
     connections: Option<usize>,
-
     #[structopt(short = "i", long = "in-flight", default_value = "100")]
     in_flight: usize,
-
     #[structopt(short = "b", long = "broker", default_value = "localhost")]
     broker: String,
-
     #[structopt(long = "port", default_value = "1883")]
     port: u16,
-
     #[structopt(long = "payload-size", default_value = "100")]
     payload_size: usize,
-
-    #[structopt(long = "duration", default_value = "60")]
+    #[structopt(long = "duration", default_value = "10")]
     duration: u64,
 }
 
@@ -107,6 +104,9 @@ async fn main() {
             let guard = pprof::ProfilerGuard::new(100).unwrap();
             bench::start(config).await;
             profile("bench.pb", guard);
+        }
+        Config::Round(config) => {
+            round::start(config).await.unwrap();
         }
         Config::Test => {
             test::start().await;
@@ -125,3 +125,5 @@ pub fn profile(name: &str, guard: ProfilerGuard) {
         file.write_all(&content).unwrap();
     };
 }
+
+
