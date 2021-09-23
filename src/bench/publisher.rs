@@ -2,7 +2,7 @@ use std::{fs, io, sync::Arc, time::Instant};
 
 use hdrhistogram::Histogram;
 use rumqttc::{
-    AsyncClient, Event, EventLoop, Incoming, Key, MqttOptions, Outgoing, QoS, Transport,
+    AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, QoS, Transport,
 };
 use tokio::{
     task,
@@ -233,16 +233,7 @@ fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOptions> {
 
     if let Some(ca_file) = &config.ca_file {
         let ca = fs::read(ca_file)?;
-        let client_auth = match &config.client_cert {
-            Some(f) => {
-                let cert = fs::read(f)?;
-                let key = fs::read(&config.client_key.as_ref().unwrap())?;
-                Some((cert, Key::RSA(key)))
-            }
-            None => None,
-        };
-
-        options.set_transport(Transport::tls(ca, client_auth, None));
+        options.set_transport(Transport::tls(ca, None, None));
     }
 
     Ok(options)

@@ -67,18 +67,35 @@ struct BenchConfig {
     /// path to PEM encoded x509 ca-chain file
     #[structopt(short = "R", long)]
     ca_file: Option<String>,
-    /// path to PEM encoded x509 client cert file.
-    #[structopt(short = "C", long)]
-    client_cert: Option<String>,
-    /// path to PEM encoded client key file
-    #[structopt(short = "K", long)]
-    client_key: Option<String>,
     /// connection_timeout
     #[structopt(short = "t", long, default_value = "5")]
     conn_timeout: u64,
     /// message rate. 0 => no throttle
     #[structopt(short = "r", long, default_value = "0")]
     rate: u64,
+}
+
+
+#[derive(Clone, Debug, StructOpt)]
+#[structopt(name = "mqttround")]
+struct RoundConfig {
+    #[structopt(short = "c", long = "connections")]
+    connections: Option<usize>,
+
+    #[structopt(short = "i", long = "in-flight", default_value = "100")]
+    in_flight: usize,
+
+    #[structopt(short = "b", long = "broker", default_value = "localhost")]
+    broker: String,
+
+    #[structopt(long = "port", default_value = "1883")]
+    port: u16,
+
+    #[structopt(long = "payload-size", default_value = "100")]
+    payload_size: usize,
+
+    #[structopt(long = "duration", default_value = "60")]
+    duration: u64,
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]

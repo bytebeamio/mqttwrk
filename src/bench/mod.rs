@@ -1,7 +1,7 @@
 use std::{fs, io, sync::Arc};
 
 use futures::StreamExt;
-use rumqttc::{MqttOptions, QoS, Transport, Key};
+use rumqttc::{MqttOptions, QoS, Transport};
 use tokio::task;
 
 use crate::BenchConfig;
@@ -57,16 +57,7 @@ pub(crate) fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOpti
 
     if let Some(ca_file) = &config.ca_file {
         let ca = fs::read(ca_file)?;
-        let client_auth = match &config.client_cert {
-            Some(f) => {
-                let cert = fs::read(f)?;
-                let key = fs::read(&config.client_key.as_ref().unwrap())?;
-                Some((cert, Key::RSA(key)))
-            }
-            None => None,
-        };
-
-        options.set_transport(Transport::tls(ca, client_auth, None));
+        options.set_transport(Transport::tls(ca, None, None));
     }
 
     Ok(options)
