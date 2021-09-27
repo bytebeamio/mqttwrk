@@ -93,7 +93,7 @@ struct RoundConfig {
     payload_size: usize,
     #[structopt(short = "d", long = "duration", default_value = "10")]
     duration: u64,
-    #[structopt(short = "c", long = "count")]
+    #[structopt(short = "n", long = "count")]
     max_publishes: Option<u64>,
 }
 

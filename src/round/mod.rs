@@ -6,9 +6,9 @@ use futures::{
 use log::debug;
 use rumqttc::{AsyncClient, Event, MqttOptions, QoS};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::{sync::Barrier, task, time};
 use tokio_util::sync::CancellationToken;
-use std::time::{Instant, Duration};
 
 use crate::RoundConfig;
 
@@ -40,14 +40,19 @@ pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
             tasks.push(task);
         }
 
-        // Wait until all connections are subscribed
-        barrier.wait().await;
+        // Start execution time count in a task. Or else, connection errors 
+        // won't propogate to try_join_all immediately
+        let execution_time = opt.duration;
+        task::spawn(async move {
+            // Wait until all connections are subscribed before waiting for execution_time seconds
+            barrier.wait().await;
 
-        // Wait for the test duration
-        time::sleep(Duration::from_secs(opt.duration)).await;
+            // Wait for the test duration
+            time::sleep(Duration::from_secs(execution_time)).await;
 
-        // Stop and shutdown the connections
-        stop.cancel();
+            // Stop and shutdown the connections
+            stop.cancel();
+        });
 
         // Wait for connection tasks to finish
         let mut result = try_join_all(tasks).await?;
