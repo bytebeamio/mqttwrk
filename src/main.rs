@@ -87,12 +87,14 @@ struct RoundConfig {
     in_flight: usize,
     #[structopt(short = "b", long = "broker", default_value = "localhost")]
     broker: String,
-    #[structopt(long = "port", default_value = "1883")]
+    #[structopt(short = "p", long = "port", default_value = "1883")]
     port: u16,
-    #[structopt(long = "payload-size", default_value = "100")]
+    #[structopt(short = "s", long = "payload-size", default_value = "100")]
     payload_size: usize,
-    #[structopt(long = "duration", default_value = "10")]
+    #[structopt(short = "d", long = "duration", default_value = "10")]
     duration: u64,
+    #[structopt(short = "c", long = "count")]
+    max_publishes: Option<u64>,
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
