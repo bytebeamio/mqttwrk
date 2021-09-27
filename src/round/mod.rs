@@ -13,8 +13,8 @@ use std::time::{Instant, Duration};
 use crate::RoundConfig;
 
 pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
-    // let connections = vec![1usize, 2, 5, 10, 15, 20, 30, 40, 50, 75, 100, 150, 200];
-    let connections = vec![50];
+    let connections = vec![1usize, 2, 5, 10, 15, 20, 30, 40, 50, 75, 100, 150, 200];
+    // let connections = vec![50];
 
     for (iteration, connections) in connections.iter().enumerate() {
         if iteration != 0 {
@@ -72,6 +72,7 @@ pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
             total / *connections as u128,
             total
         );
+        println!("-------------------------------------------------------------------------------");
     }
 
     Ok(())
