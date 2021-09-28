@@ -1,8 +1,5 @@
-use anyhow::{anyhow, Result};
-use futures::{
-    future::{ready, try_join_all},
-    FutureExt,
-};
+use anyhow::{anyhow, bail, Result};
+use futures::future::try_join_all;
 use log::debug;
 use rumqttc::{AsyncClient, Event, MqttOptions, QoS};
 use std::sync::Arc;
@@ -13,8 +10,9 @@ use tokio_util::sync::CancellationToken;
 use crate::RoundConfig;
 
 pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
-    let connections = vec![1usize, 2, 5, 10, 15, 20, 30, 40, 50, 75, 100, 150, 200];
-    // let connections = vec![50];
+    // let connections = vec![1usize, 2, 5, 10, 15, 20, 30, 40, 50, 75, 100, 150, 200];
+    let connections = vec![100];
+    let execution_time = opt.duration as u64;
 
     for (iteration, connections) in connections.iter().enumerate() {
         if iteration != 0 {
@@ -30,19 +28,34 @@ pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
         // Start connections
         let mut tasks = Vec::new();
         for c in 0..*connections {
-            let task =
-                task::spawn(connection(c, opt.clone(), stop.clone(), barrier.clone())).then(|r| {
-                    match r {
-                        Ok(r) => ready(r),
-                        Err(e) => ready(Err(e.into())),
-                    }
-                });
+            let barrier = barrier.clone();
+            let stop = stop.clone();
+            let opt = opt.clone();
+            let task = task::spawn(async move {
+                let v = time::timeout(
+                    Duration::from_secs(opt.duration as u64 + 10),
+                    connection(c, opt, stop, barrier),
+                )
+                .await;
+
+                let v = match v {
+                    Ok(v) => v,
+                    Err(e) => bail!("connection: {:<5} error: {}", c, e),
+                };
+
+                let v = match v {
+                    Ok(v) => v,
+                    Err(e) => bail!("connection: {:<5} error: {}", c, e),
+                };
+
+                Ok::<_, anyhow::Error>(v)
+            });
+
             tasks.push(task);
         }
 
-        // Start execution time count in a task. Or else, connection errors 
+        // Start execution time count in a task. Or else, connection errors
         // won't propogate to try_join_all immediately
-        let execution_time = opt.duration;
         task::spawn(async move {
             // Wait until all connections are subscribed before waiting for execution_time seconds
             barrier.wait().await;
@@ -55,11 +68,11 @@ pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
         });
 
         // Wait for connection tasks to finish
-        let mut result = try_join_all(tasks).await?;
-        result.sort();
-
-        let total: u128 = result.iter().map(|v| v.throughput).sum();
-        for v in result {
+        let results = try_join_all(tasks).await?;
+        let mut success: Vec<Status> = results.iter().filter_map(|v| v.as_ref().ok()).cloned().collect();
+        let total: u128 = success.iter().map(|v| v.throughput).sum();
+        success.sort();
+        for v in success {
             println!(
                 "connection: {:<5} out: {:<10} in: {:<10} miss: {:<5} throughput: {}/s",
                 v.id,
@@ -67,7 +80,12 @@ pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
                 v.received,
                 v.sent - v.received,
                 v.throughput
-            );
+            )
+        }
+
+        let failures: Vec<&anyhow::Error> = results.iter().filter_map(|v| v.as_ref().err()).collect();
+        for v in failures {
+            println!("{}", v);
         }
 
         println!("-------------------------------------------------------------------------------");
@@ -83,7 +101,7 @@ pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 struct Status {
     id: usize,
     sent: u64,
@@ -102,7 +120,7 @@ async fn connection(
     let mut mqttoptions = MqttOptions::new(n.to_string(), opt.broker, opt.port);
     mqttoptions.set_clean_session(true);
     mqttoptions.set_inflight(opt.in_flight as u16);
-    mqttoptions.set_keep_alive(120);
+    mqttoptions.set_keep_alive(opt.duration);
     mqttoptions.set_request_channel_capacity(opt.in_flight + 10);
 
     // Initialize the client with a request queue size that is bigger than the in flight number
@@ -158,13 +176,14 @@ async fn connection(
                         // Calculate the rate in pub + res in per s
                         let micros = Instant::now().duration_since(start).as_micros() + 1;
                         let rate = (publications_received as u128 * 1000_000) / micros;
-
-                        break 'outer Ok(Status {
+                        let v = Status {
                             id: n,
                             sent: publications_sent,
                             received: publications_received,
                             throughput: rate,
-                        });
+                        };
+
+                        break 'outer Ok(v);
                     }
                     rumqttc::Packet::Publish(v) => {
                         debug!("[{}]: Incoming publish {:?}", n, v);
@@ -174,12 +193,15 @@ async fn connection(
                             if publications_sent >= max_publishes {
                                 let micros = Instant::now().duration_since(start).as_micros() + 1;
                                 let rate = (publications_received as u128 * 1000_000) / micros;
-                                break 'outer Ok(Status {
+
+                                let v = Status {
                                     id: n,
                                     sent: publications_sent,
                                     received: publications_received,
                                     throughput: rate,
-                                });
+                                };
+
+                                break 'outer Ok(v);
                             }
                         }
 
