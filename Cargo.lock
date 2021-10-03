@@ -760,7 +760,9 @@ dependencies = [
 name = "mqttwrk"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-channel",
+ "bytes",
  "colored",
  "colour",
  "flume",
@@ -777,6 +779,8 @@ dependencies = [
  "structopt",
  "thiserror",
  "tokio",
+ "tokio-util",
+ "uuid",
  "whoami",
 ]
 
@@ -1572,6 +1576,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-util"
+version = "0.6.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08d3725d3efa29485e87311c5b699de63cde14b00ed4d256b8318aa30ca452cd"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "futures-sink",
+ "log",
+ "pin-project-lite",
+ "tokio",
+]
+
+[[package]]
 name = "unicode-segmentation"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1606,6 +1624,9 @@ name = "uuid"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
+dependencies = [
+ "getrandom 0.2.3",
+]
 
 [[package]]
 name = "vec_map"
