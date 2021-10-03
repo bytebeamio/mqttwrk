@@ -10,8 +10,8 @@ use tokio_util::sync::CancellationToken;
 use crate::RoundConfig;
 
 pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
-    // let connections = vec![1usize, 2, 5, 10, 15, 20, 30, 40, 50, 75, 100, 150, 200];
-    let connections = vec![100];
+    let connections = vec![1usize, 2, 5, 10, 15, 20, 30, 40, 50, 75, 100, 150, 200];
+    // let connections = vec![70];
     let execution_time = opt.duration as u64;
 
     for (iteration, connections) in connections.iter().enumerate() {
@@ -72,30 +72,40 @@ pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
         let mut success: Vec<Status> = results.iter().filter_map(|v| v.as_ref().ok()).cloned().collect();
         let total: u128 = success.iter().map(|v| v.throughput).sum();
         success.sort();
+
+        let mut sent = 0;
+        let mut received = 0;
         for v in success {
-            println!(
-                "connection: {:<5} out: {:<10} in: {:<10} miss: {:<5} throughput: {}/s",
-                v.id,
-                v.sent,
-                v.received,
-                v.sent - v.received,
-                v.throughput
-            )
+            sent += v.sent; 
+            received += v.received;
         }
 
-        let failures: Vec<&anyhow::Error> = results.iter().filter_map(|v| v.as_ref().err()).collect();
-        for v in failures {
-            println!("{}", v);
-        }
+        // println!("-------------------------------------------------------------------------------");
+        // for v in success {
+        //     println!(
+        //         "connection: {:<5} out: {:<10} in: {:<10} miss: {:<5} throughput: {}/s",
+        //         v.id,
+        //         v.sent,
+        //         v.received,
+        //         v.sent - v.received,
+        //         v.throughput
+        //     )
+        // }
+        // println!("-------------------------------------------------------------------------------");
 
-        println!("-------------------------------------------------------------------------------");
+        // let failures: Vec<&anyhow::Error> = results.iter().filter_map(|v| v.as_ref().err()).collect();
+        // for v in failures {
+        //     println!("{}", v);
+        // }
+
         println!(
-            "Connections: {}, Per connection avg: {}/s, Total: {}/s",
+            "Connections: {:3} Sent: {:10} Miss: {:5} Per connection avg: {:7}/s Total: {}/s",
             connections,
+            sent,
+            sent - received,
             total / *connections as u128,
             total
         );
-        println!("-------------------------------------------------------------------------------");
     }
 
     Ok(())
@@ -127,8 +137,9 @@ async fn connection(
     let (client, mut eventloop) = AsyncClient::new(mqttoptions, opt.in_flight + 10);
 
     // Each connection uses it's own random topic
-    let topic = uuid::Uuid::new_v4().to_string();
+    // let topic = uuid::Uuid::new_v4().to_string();
     // let topic = "hello/1/world".to_string();
+    let topic = n.to_string();
 
     // Count publications sent
     let mut publications_sent = 0u64;
