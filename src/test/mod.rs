@@ -153,9 +153,9 @@ async fn connect(eventloop: &mut EventLoop) {
     }
 }
 
-fn options(id: &str, keep_alive: u16, max_inflight: u16) -> MqttOptions {
+fn options(id: &str, keep_alive: u64, max_inflight: u16) -> MqttOptions {
     let mut options = MqttOptions::new(id, "localhost", 1883);
-    options.set_keep_alive(keep_alive);
+    options.set_keep_alive(Duration::from_secs(keep_alive));
     options.set_inflight(max_inflight);
     options.set_connection_timeout(10);
     options.set_clean_session(false);

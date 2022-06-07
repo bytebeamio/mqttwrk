@@ -1,4 +1,4 @@
-use std::{fs, io, sync::Arc};
+use std::{fs, io, sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use rumqttc::{MqttOptions, QoS, Transport};
@@ -51,7 +51,7 @@ pub(crate) async fn start(config: BenchConfig) {
 
 pub(crate) fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOptions> {
     let mut options = MqttOptions::new(id, &config.server, config.port);
-    options.set_keep_alive(config.keep_alive);
+    options.set_keep_alive(Duration::from_secs(config.keep_alive));
     options.set_inflight(config.max_inflight);
     options.set_connection_timeout(config.conn_timeout);
 

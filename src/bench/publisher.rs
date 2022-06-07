@@ -227,7 +227,7 @@ fn get_qos(qos: i16) -> QoS {
 
 fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOptions> {
     let mut options = MqttOptions::new(id, &config.server, config.port);
-    options.set_keep_alive(config.keep_alive);
+    options.set_keep_alive(Duration::from_secs(config.keep_alive));
     options.set_inflight(config.max_inflight);
     options.set_connection_timeout(config.conn_timeout);
 

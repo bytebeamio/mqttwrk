@@ -130,7 +130,7 @@ async fn connection(
     let mut mqttoptions = MqttOptions::new(n.to_string(), opt.broker, opt.port);
     mqttoptions.set_clean_session(true);
     mqttoptions.set_inflight(opt.in_flight as u16);
-    mqttoptions.set_keep_alive(opt.duration);
+    mqttoptions.set_keep_alive(Duration::from_secs(opt.duration));
     mqttoptions.set_request_channel_capacity(opt.in_flight + 10);
 
     // Initialize the client with a request queue size that is bigger than the in flight number

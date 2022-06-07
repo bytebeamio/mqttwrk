@@ -6,9 +6,6 @@
 //! - Spawn n clients with publish and subscribe on the same topic (and report thoughput and latencies)
 //! - Spawn n clinets with publishes and 1 subscription to pull all the data (used to simulate a sink in the cloud)
 
-#[global_allocator]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
-
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -18,9 +15,6 @@ mod bench;
 mod round;
 mod test;
 
-use pprof::{protos::Message, ProfilerGuard};
-use std::fs;
-use std::io::Write;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -28,6 +22,7 @@ use structopt::StructOpt;
     name = "mqttwrk",
     about = "A MQTT server bench marking tool inspired by wrk."
 )]
+
 enum Config {
     Bench(BenchConfig),
     Round(RoundConfig),
@@ -48,21 +43,21 @@ struct BenchConfig {
     #[structopt(short = "p", long, default_value = "1883")]
     port: u16,
     // number of publishers
-    #[structopt(short = "a", long = "pubs", default_value = "1")]
+    #[structopt(short = "a", default_value = "1")]
     publishers: usize,
     // number of subscribers
-    #[structopt(short = "b", long = "subs", default_value = "0")]
+    #[structopt(short = "b", default_value = "0")]
     subscribers: usize,
     /// qos, default 0
-    #[structopt(short = "x", long = "pub_q", default_value = "1")]
+    #[structopt(short = "x", default_value = "1")]
     publish_qos: i16,
     /// qos, default 0
-    #[structopt(short = "y", long = "sub_q", default_value = "1")]
+    #[structopt(short = "y", default_value = "1")]
     subscribe_qos: i16,
     /// size of payload
     /// keep alive
     #[structopt(short = "k", long, default_value = "10")]
-    keep_alive: u16,
+    keep_alive: u64,
     /// max inflight messages
     #[structopt(short = "i", long, default_value = "100")]
     max_inflight: u16,
@@ -92,7 +87,7 @@ struct RoundConfig {
     #[structopt(short = "s", long = "payload-size", default_value = "100")]
     payload_size: usize,
     #[structopt(short = "d", long = "duration", default_value = "10")]
-    duration: u16,
+    duration: u64,
     #[structopt(short = "n", long = "count")]
     max_publishes: Option<u64>,
 }
@@ -103,9 +98,7 @@ async fn main() {
     let config: Config = Config::from_args();
     match config {
         Config::Bench(config) => {
-            let guard = pprof::ProfilerGuard::new(100).unwrap();
             bench::start(config).await;
-            profile("bench.pb", guard);
         }
         Config::Round(config) => {
             round::start(config).await.unwrap();
@@ -115,17 +108,3 @@ async fn main() {
         }
     }
 }
-
-#[allow(unused)]
-pub fn profile(name: &str, guard: ProfilerGuard) {
-    if let Ok(report) = guard.report().build() {
-        let mut file = fs::File::create(name).unwrap();
-        let profile = report.pprof().unwrap();
-
-        let mut content = Vec::new();
-        profile.encode(&mut content).unwrap();
-        file.write_all(&content).unwrap();
-    };
-}
-
-
