@@ -1,0 +1,37 @@
+name: mqttwrk 
+base: core20
+summary: A MQTT server bench marking tool inspired by wrk.
+website: https://bytebeam.io
+description: Wrk inspired tool for scale and performance testing mqtt brokers.
+confinement: strict
+contact: https://bytebeam.io
+license: Apache-2.0
+title: A MQTT server bench marking tool
+
+adopt-info: mqttwrk
+
+architectures:
+  - build-on: [amd64,i386]
+
+parts:
+  mqttwrk:
+    plugin: rust
+    source: .
+
+    # Extract app version from Cargo.toml and set it as snap's version.
+    override-pull: |
+      snapcraftctl pull
+      version=$(cat Cargo.toml | grep version | head -n1 | cut -d"=" -f2 | awk '{$1=$1};1' | sed -e 's/^"//' -e 's/"$//')
+      sed -i "s/0.1.0/$version/" snapcraft.yaml
+      snapcraftctl set-version $version
+      snapcraftctl set-grade stable
+    
+    # Build a snap here.
+    override-build: |
+      snapcraftctl build
+
+  
+apps:
+  mqttwrk:
+    command: bin/mqttwrk
+    plugs: [network] # in "strict" confinement we need to specify permission to use network.
