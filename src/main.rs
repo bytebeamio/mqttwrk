@@ -12,6 +12,7 @@ extern crate log;
 extern crate colour;
 
 mod bench;
+mod conformance;
 mod round;
 mod test;
 
@@ -71,7 +72,6 @@ struct BenchConfig {
     #[structopt(short = "r", long, default_value = "0")]
     rate: u64,
 }
-
 
 #[derive(Clone, Debug, StructOpt)]
 #[structopt(name = "mqttround")]
