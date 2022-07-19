@@ -21,6 +21,7 @@ pub enum ConnectionError {
     Client(#[from] rumqttc::ClientError),
 }
 
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub(crate) async fn start(config: BenchConfig) {
     let config = Arc::new(config);
     let mut handles = futures::stream::FuturesUnordered::new();

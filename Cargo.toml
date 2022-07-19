@@ -6,6 +6,9 @@ license = "Apache-2.0"
 authors = ["tekjar <raviteja@bytebeam.io>"]
 edition = "2018"
 
+[features]
+default = []
+qos2 = []
 
 [dependencies]
 # rumqttc = {git="https://github.com/bytebeamio/rumqtt.git", branch="master"}
@@ -13,8 +16,8 @@ edition = "2018"
 bytes = "1"
 anyhow = "1"
 uuid = { version = "1", features = ["v4"] }
-rumqttc = "0.12.0"
-tokio = { version = "1.19", features = ["full"] }
+rumqttc = "0.13.0"
+tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 rand = "0.8"
 futures = "0.3"

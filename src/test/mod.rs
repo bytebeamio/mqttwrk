@@ -3,6 +3,7 @@ use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, Qo
 use std::time::Duration;
 use tokio::{task, time};
 
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub async fn start() {
     // idle_connection().await;
     // publishes().await;
@@ -52,8 +53,12 @@ pub async fn publishes() {
     // 10 qos 0 publishes, 10 qos 1 publishes, 10 pubacks, 2 pingreq, 2 ping resp
     for _i in 0..34usize {
         match eventloop.poll().await.unwrap() {
-            Event::Incoming(Incoming::PubAck(ack)) => println!("{} ({})", "Recv puback".green(), ack.pkid),
-            Event::Outgoing(Outgoing::Publish(pkid)) => println!("{} ({})", "Sent publish".white(), pkid),
+            Event::Incoming(Incoming::PubAck(ack)) => {
+                println!("{} ({})", "Recv puback".green(), ack.pkid)
+            }
+            Event::Outgoing(Outgoing::Publish(pkid)) => {
+                println!("{} ({})", "Sent publish".white(), pkid)
+            }
             Event::Incoming(Incoming::PingResp) => println!("{}", "Recv ping response".green()),
             Event::Outgoing(Outgoing::PingReq) => println!("{}", "Sent ping request".white()),
             event => {
@@ -65,7 +70,10 @@ pub async fn publishes() {
 }
 
 pub async fn subscribe() {
-    println!("\n{}\n", "Running subscribe test".yellow().bold().underline());
+    println!(
+        "\n{}\n",
+        "Running subscribe test".yellow().bold().underline()
+    );
     let (client1, mut eventloop1) = AsyncClient::new(options("test-client-1", 5, 10), 10);
     connect(&mut eventloop1).await;
 
@@ -86,13 +94,15 @@ pub async fn subscribe() {
         for _i in 0..24usize {
             match eventloop1.poll().await.unwrap() {
                 Event::Incoming(i) => match i {
-                    Incoming::PubAck(ack) => println!("{} ({})", "1. Recv puback".green(), ack.pkid),
+                    Incoming::PubAck(ack) => {
+                        println!("{} ({})", "1. Recv puback".green(), ack.pkid)
+                    }
                     Incoming::PingResp => println!("{}", "1. Recv ping response".green()),
                     event => {
                         red_ln!("Unexpected incoming event: {:?}", event);
                         break;
                     }
-                }
+                },
                 Event::Outgoing(o) => match o {
                     Outgoing::Publish(pkid) => println!("{} ({})", "1. Sent publish".white(), pkid),
                     Outgoing::PingReq => println!("{}", "1. Sent ping request".white()),
@@ -100,7 +110,7 @@ pub async fn subscribe() {
                         red_ln!("Unexpected outgoing event: {:?}", event);
                         break;
                     }
-                }
+                },
             }
         }
     });
@@ -129,7 +139,7 @@ pub async fn subscribe() {
                     red_ln!("Unexpected incoming event: {:?}", event);
                     break;
                 }
-            }
+            },
             Event::Outgoing(o) => match o {
                 Outgoing::Subscribe(pkid) => println!("{} ({})", "2. Sent subscribe".white(), pkid),
                 Outgoing::PubAck(pkid) => println!("{} ({})", "2. Sent puback".white(), pkid),
@@ -138,7 +148,7 @@ pub async fn subscribe() {
                     red_ln!("Unexpected outgoing event: {:?}", event);
                     break;
                 }
-            }
+            },
         }
     }
 }
