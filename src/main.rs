@@ -27,6 +27,7 @@ use structopt::StructOpt;
 enum Config {
     Bench(BenchConfig),
     Round(RoundConfig),
+    Conformance,
     Test,
 }
 
@@ -77,6 +78,7 @@ struct BenchConfig {
 #[structopt(name = "mqttround")]
 struct RoundConfig {
     #[structopt(short = "c", long = "connections")]
+    #[allow(dead_code)]
     connections: Option<usize>,
     #[structopt(short = "i", long = "in-flight", default_value = "100")]
     in_flight: usize,
@@ -92,19 +94,21 @@ struct RoundConfig {
     max_publishes: Option<u64>,
 }
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
-async fn main() {
+fn main() {
     pretty_env_logger::init();
     let config: Config = Config::from_args();
     match config {
         Config::Bench(config) => {
-            bench::start(config).await;
+            bench::start(config);
         }
         Config::Round(config) => {
-            round::start(config).await.unwrap();
+            round::start(config).unwrap();
+        }
+        Config::Conformance => {
+            conformance::start();
         }
         Config::Test => {
-            test::start().await;
+            test::start();
         }
     }
 }

@@ -9,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::RoundConfig;
 
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
     let connections = vec![1usize, 2, 5, 10, 15, 20, 30, 40, 50, 75, 100, 150, 200];
     // let connections = vec![70];
@@ -69,14 +70,18 @@ pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
 
         // Wait for connection tasks to finish
         let results = try_join_all(tasks).await?;
-        let mut success: Vec<Status> = results.iter().filter_map(|v| v.as_ref().ok()).cloned().collect();
+        let mut success: Vec<Status> = results
+            .iter()
+            .filter_map(|v| v.as_ref().ok())
+            .cloned()
+            .collect();
         let total: u128 = success.iter().map(|v| v.throughput).sum();
         success.sort();
 
         let mut sent = 0;
         let mut received = 0;
         for v in success {
-            sent += v.sent; 
+            sent += v.sent;
             received += v.received;
         }
 

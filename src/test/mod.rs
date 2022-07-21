@@ -3,6 +3,7 @@ use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, Qo
 use std::time::Duration;
 use tokio::{task, time};
 
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub async fn start() {
     // idle_connection().await;
     // publishes().await;
