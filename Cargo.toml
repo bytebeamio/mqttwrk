@@ -6,6 +6,9 @@ license = "Apache-2.0"
 authors = ["tekjar <raviteja@bytebeam.io>"]
 edition = "2018"
 
+[features]
+default = []
+qos2 = []
 
 [dependencies]
 # rumqttc = {git="https://github.com/bytebeamio/rumqtt.git", branch="master"}
