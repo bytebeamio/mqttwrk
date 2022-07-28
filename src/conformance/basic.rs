@@ -251,7 +251,7 @@ pub async fn test_retained_messages() {
 
     // We cleared all the retained messages so should only receive pings
     assert_eq!(notif2, Event::Incoming(Incoming::PingResp));
-    println!("{}", "Retained message test Succesfull".green());
+    println!("{}", "Retained message test Successfull".green());
 }
 
 pub async fn test_zero_length_clientid() {
@@ -385,7 +385,7 @@ pub async fn test_overlapping_subscriptions() {
     let notif2 = eventloop.poll().await.unwrap(); // publish from topic/#
     assert!(WrappedEvent::new(notif1).is_publish().evaluate());
     assert!(WrappedEvent::new(notif2).is_publish().evaluate());
-    println!("{}", "Overlapping subscriptions test Succesful".green());
+    println!("{}", "Overlapping subscriptions test Successful".green());
 }
 
 pub async fn test_will_message() {
@@ -411,8 +411,7 @@ pub async fn test_will_message() {
     );
 
     let config2: MqttOptions = common::mqtt_config(2);
-    let (client2, eventloop2) = AsyncClient::new(config2.clone(), 10);
-    let mut eventloop2 = WrappedEventLoop::new(eventloop2);
+    let (client2, mut eventloop2) = common::get_client(config2);
 
     let _ = eventloop2.poll().await.unwrap(); // connack
 
@@ -430,19 +429,98 @@ pub async fn test_will_message() {
     let notif3 = eventloop2.poll().await.unwrap(); // publish
 
     assert!(WrappedEvent::new(notif3).is_publish().evaluate());
-    println!("{}", "Will message test succesful".green());
+    println!("{}", "Will message test Successful".green());
 }
 
 pub async fn test_dollar_topic_filter() {
-    todo!();
+    println!("{}", "Subscribe failure test".yellow());
+    let config: MqttOptions = common::mqtt_config(1);
+
+    let (client1, mut eventloop1) = common::get_client(config.clone());
+    let _ = eventloop1.poll().await.unwrap(); // connack
+
+    client1.subscribe("+/+", QoS::AtMostOnce).await.unwrap();
+    let _ = eventloop1.poll().await.unwrap(); // suback
+
+    client1
+        .publish("$dollar_test", QoS::AtMostOnce, false, "")
+        .await
+        .unwrap();
+    let _ = eventloop1.poll().await.unwrap(); // puback
+
+    let notif1 = eventloop1.poll().await.unwrap();
+    assert!(WrappedEvent::new(notif1).is_pingresp().evaluate());
+    println!("{}", "Subscribe failure test Successful".green());
 }
 
 pub async fn test_unsubscribe() {
-    todo!();
+    println!("{}", "Subscribe failure test".yellow());
+    let config: MqttOptions = common::mqtt_config(1);
+
+    let (client1, mut eventloop1) = common::get_client(config.clone());
+    let _ = eventloop1.poll().await.unwrap(); // connack
+
+    client1.subscribe("topicA", QoS::AtMostOnce).await.unwrap();
+    let _ = eventloop1.poll().await.unwrap(); // suback
+
+    client1
+        .subscribe("topicA/B", QoS::AtMostOnce)
+        .await
+        .unwrap();
+    let _ = eventloop1.poll().await.unwrap(); // suback
+
+    client1.subscribe("topicC", QoS::AtMostOnce).await.unwrap();
+    let _ = eventloop1.poll().await.unwrap(); // suback
+
+    client1.unsubscribe("topicA").await.unwrap();
+    let notif1 = eventloop1.poll().await.unwrap(); // suback
+    dbg!(notif1);
+
+    let config: MqttOptions = common::mqtt_config(2);
+
+    let (client2, mut eventloop2) = common::get_client(config.clone());
+    let _ = eventloop2.poll().await.unwrap(); // connack
+
+    client2
+        .publish("topicA", QoS::AtMostOnce, false, "")
+        .await
+        .unwrap();
+    let _ = eventloop2.poll().await.unwrap(); // puback
+    client2
+        .publish("topicA/B", QoS::AtMostOnce, false, "")
+        .await
+        .unwrap();
+    let _ = eventloop2.poll().await.unwrap(); // puback
+    client2
+        .publish("topicC", QoS::AtMostOnce, false, "")
+        .await
+        .unwrap();
+    let _ = eventloop2.poll().await.unwrap(); // puback
+
+    let notif1 = eventloop1.poll().await.unwrap();
+    assert!(WrappedEvent::new(notif1).is_publish().evaluate());
+    let notif2 = eventloop1.poll().await.unwrap();
+    assert!(WrappedEvent::new(notif2).is_publish().evaluate());
+    let notif3 = eventloop1.poll().await.unwrap();
+    assert!(WrappedEvent::new(notif3).is_pingresp().evaluate());
+    println!("{}", "Subscribe failure test Successful".green());
 }
 
 pub async fn test_subscribe_failure() {
-    todo!();
+    println!("{}", "Subscribe failure test".yellow());
+    let config: MqttOptions = common::mqtt_config(1);
+
+    let (client, mut eventloop) = common::get_client(config.clone());
+    let _ = eventloop.poll().await.unwrap(); // connack
+
+    client
+        .subscribe("test/shouldfail", QoS::AtMostOnce)
+        .await
+        .unwrap();
+
+    // TODO: Err should contain more descriptive message
+    assert!(eventloop.poll().await.is_err());
+    println!("{}", "Subscribe failure test Successful".green());
 }
 
 pub async fn test_redelivery_on_reconnect() {
