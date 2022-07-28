@@ -10,7 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 pub async fn session_test() {
-    println!("{}", "Basic test".yellow());
+    println!("{}", "Session test".yellow());
     let mut config = common::mqtt_config(1);
 
     config.set_clean_session(false);
@@ -41,6 +41,7 @@ pub async fn session_test() {
             code: ConnectReturnCode::Success
         }))
     );
+    println!("{}", "Session test Successful".yellow());
 }
 
 // TODO?: Connecting to same socket twice should fail
@@ -145,6 +146,7 @@ pub async fn test_keepalive() {
     let _ = eventloop.poll().await.unwrap(); // connack
 }
 
+// messages not being retained
 pub async fn test_retained_messages() {
     let config = common::mqtt_config(1);
     let (client, eventloop) = AsyncClient::new(config.clone(), 10);
@@ -381,10 +383,13 @@ pub async fn test_overlapping_subscriptions() {
         .await
         .unwrap();
 
-    let notif1 = eventloop.poll().await.unwrap(); // publish from topic/+
-    let notif2 = eventloop.poll().await.unwrap(); // publish from topic/#
-    assert!(WrappedEvent::new(notif1).is_publish().evaluate());
-    assert!(WrappedEvent::new(notif2).is_publish().evaluate());
+    loop {
+        let notif1 = eventloop.poll().await.unwrap(); // publish from topic/+
+        dbg!(notif1);
+    }
+    // let notif2 = eventloop.poll().await.unwrap(); // publish from topic/#
+    // assert!(WrappedEvent::new(notif1).is_publish().evaluate());
+    // assert!(WrappedEvent::new(notif2).is_publish().evaluate());
     println!("{}", "Overlapping subscriptions test Successful".green());
 }
 

@@ -6,7 +6,7 @@ use basic::*;
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub(crate) async fn start() {
     // session_test().await;
-    // test_basic().await;
+    test_basic().await;
     // test_retained_messages().await;
     // test_will_message().await;
     // test_connack_with_clean_session().await;
@@ -20,5 +20,5 @@ pub(crate) async fn start() {
     // NOTE: rumqttc don't allow empty clientID with clean_session false
     // test_zero_length_clientid().await;
 
-    // test_overlapping_subscriptions().await;
+    test_overlapping_subscriptions().await;
 }
