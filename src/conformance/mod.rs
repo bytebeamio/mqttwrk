@@ -5,15 +5,15 @@ use basic::*;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub async fn start() {
-    // session_test().await;
     test_basic().await;
+    test_keepalive().await;
+    session_test().await;
     // test_retained_messages().await;
     // test_will_message().await;
     // test_connack_with_clean_session().await;
     // test_offline_message_queueing().await;
     // test_subscribe_failure().await;
     // test_dollar_topic_filter().await;
-    // test_keepalive().await;
 
     // TODO: We don't yet support unsubscribe
     // test_unsubscribe().await;
