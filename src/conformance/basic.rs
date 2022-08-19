@@ -13,7 +13,7 @@ use std::time::Duration;
 // TODO?: Connecting to same socket twice should fail
 pub async fn test_basic() {
     yellow_ln!("Basic test");
-    let mut config = MqttOptions::new("conformance-basic", "localhost", 8083);
+    let mut config = MqttOptions::new("conformance-basic", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
 
     let (client, eventloop) = common::get_client(config.clone());
@@ -113,16 +113,17 @@ pub async fn test_basic() {
 pub async fn session_test() {
     yellow_ln!("Starting session test");
 
-    let mut config = MqttOptions::new("conformance-session", "localhost", 8083);
+    let mut config = MqttOptions::new("conformance-session", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
     config.set_clean_session(true);
 
     let (client, mut eventloop) = common::get_client(config.clone());
     let incoming = eventloop.poll().await.unwrap(); // connack
-    assert!(matches!(incoming, Packet::ConnAck(ConnAck { .. })));
+    assert!(matches!(incoming, Incoming::ConnAck(ConnAck { .. })));
+
     client.disconnect().await.unwrap();
 
-    let mut config = MqttOptions::new("conformance-session", "localhost", 8083);
+    let mut config = MqttOptions::new("conformance-session", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
     config.set_clean_session(false);
 
@@ -157,7 +158,7 @@ pub async fn session_test() {
 
 pub async fn test_overlapping_subscriptions() {
     yellow_ln!("Overlapping subscriptions test");
-    let mut config = MqttOptions::new("conformance-overlapping-subscriptions", "localhost", 8083);
+    let mut config = MqttOptions::new("conformance-overlapping-subscriptions", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
     config.set_clean_session(true);
 
@@ -186,11 +187,12 @@ pub async fn test_overlapping_subscriptions() {
 
     let notif1 = eventloop.poll().await.unwrap(); // publish from topic/+
     let notif2 = eventloop.poll().await.unwrap(); // publish from topic/#
+    dbg!(notif1.clone(), notif2.clone());
 
-    let notif1_publish = matches!(notif1, Incoming::Publish(Publish { .. }));
-    let notif2_publish = matches!(notif2, Incoming::Publish(Publish { .. }));
+    let notif1_is_publish = matches!(notif1, Incoming::Publish(Publish { .. }));
+    let notif2_is_publish = matches!(notif2, Incoming::Publish(Publish { .. }));
 
-    match (notif1_publish, notif2_publish) {
+    match (notif1_is_publish, notif2_is_publish) {
         (true, false) | (false, true) => {
             yellow_ln!("Broker publishes 1 message per overlapping subscription");
         }
@@ -207,7 +209,7 @@ pub async fn test_overlapping_subscriptions() {
 // TODO: Not disconnecting the client if keep_alive time has passed with no messages from client
 pub async fn test_keepalive() {
     yellow_ln!("Ping test");
-    let mut config = MqttOptions::new("conformance-overlapping-subscriptions", "localhost", 8083);
+    let mut config = MqttOptions::new("conformance-overlapping-subscriptions", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
     config.set_last_will(LastWill::new(
         "topic/will",
@@ -234,7 +236,7 @@ pub async fn test_keepalive() {
 // pub async fn test_retained_messages() {
 //     yellow_ln!("Retained message test");
 //
-//     let mut config = MqttOptions::new("conformance-retained-message", "localhost", 8083);
+//     let mut config = MqttOptions::new("conformance-retained-message", "localhost", 1883);
 //     config.set_keep_alive(Duration::from_secs(5));
 //
 //     let (client, mut eventloop) = common::get_client(config.clone());
@@ -342,7 +344,8 @@ pub async fn test_keepalive() {
 
 // TODO: Currently rumqttc panics for this test. According to spec broker should be the one handling this not client
 pub async fn test_zero_length_clientid() {
-    let mut config = MqttOptions::new("", "localhost", 8083);
+    let mut config = MqttOptions::new("", "localhost", 1883);
+    config.set_keep_alive(Duration::from_secs(5));
     config.set_clean_session(true);
 
     let (_client, mut eventloop) = common::get_client(config);
@@ -357,7 +360,8 @@ pub async fn test_zero_length_clientid() {
         })
     );
 
-    let mut config2 = MqttOptions::new("", "localhost", 8083);
+    let mut config2 = MqttOptions::new("", "localhost", 1883);
+    config2.set_keep_alive(Duration::from_secs(5));
     config2.set_clean_session(false);
 
     let (_client, mut eventloop) = common::get_client(config2);
@@ -372,77 +376,92 @@ pub async fn test_zero_length_clientid() {
     );
 }
 
-// pub async fn test_offline_message_queueing() {
-//     yellow_ln!("Offline message Queue test");
-//     let mut config = common::mqtt_config(1);
-//     config.set_clean_session(false);
-//
-//     let (client1, mut eventloop1) = common::get_client(config.clone());
-//     let _ = eventloop1.poll().await.unwrap(); // connack
-//
-//     client1.subscribe("+/+", QoS::AtLeastOnce).await.unwrap();
-//     let _ = eventloop1.poll().await.unwrap(); // suback
-//     drop(eventloop1);
-//
-//     let mut config2 = common::mqtt_config(2);
-//     config2.set_clean_session(false);
-//
-//     let (client2, mut eventloop2) = common::get_client(config2);
-//     let _ = eventloop2.poll().await.unwrap(); // connack
-//
-//     client2
-//         .publish("topic/a", QoS::AtMostOnce, true, "QoS::AtMostOnce")
-//         .await
-//         .unwrap();
-//
-//     client2
-//         .publish("topic/a", QoS::AtLeastOnce, true, "QoS::AtLeastOnce")
-//         .await
-//         .unwrap();
-//
-//     let _ = eventloop2.poll().await.unwrap(); // incoming: puback
-//
-//     #[cfg(feature = "qos2")]
-//     {
-//         client2
-//             .publish("topic/a", QoS::ExactlyOnce, true, "QoS::ExactlyOnce")
-//             .await
-//             .unwrap();
-//
-//         let _ = eventloop2.poll().await.unwrap(); // incoming: pubrec
-//         let _ = eventloop2.poll().await.unwrap(); // incoming: pubcomp
-//     }
-//
-//     client2.disconnect().await.unwrap();
-//
-//     let (_client1, mut eventloop1) = common::get_client(config.clone());
-//     let notif1 = eventloop1.poll().await.unwrap(); // connack
-//
-//     assert_eq!(
-//         notif1,
-//         Incoming::ConnAck(ConnAck {
-//             session_present: true,
-//             code: ConnectReturnCode::Success
-//         })
-//     );
-//
-//     // NOTE: We don't store QoS0 publish's when client is not connected. Some clients might expect
-//     // broker to store it.
-//     let notif1 = eventloop1.poll().await.unwrap(); // QoS1 publish
-//     let notif2 = eventloop1.poll().await.unwrap(); // PingResp
-//     dbg!(notif1.clone(), notif2.clone());
-//     assert!(WrappedEvent::new(notif1).is_publish().evaluate());
-//     assert!(WrappedEvent::new(notif2).is_pingresp().evaluate());
-//     green_ln!("Offline message Queue test successful");
-//     #[cfg(feature = "qos2")]
-//     {
-//         let notif3 = eventloop1.poll().await.unwrap(); // QoS2 publish
-//     }
-// }
+pub async fn test_offline_message_queueing() {
+    yellow_ln!("Offline message Queue test");
+    let mut config1 = MqttOptions::new("conformance-offline-message-queue", "localhost", 1883);
+    config1.set_keep_alive(Duration::from_secs(5));
+    config1.set_clean_session(false);
+
+    let (client1, mut eventloop1) = common::get_client(config1.clone());
+    let _ = eventloop1.poll().await.unwrap(); // connack
+
+    client1.subscribe("+/+", QoS::AtLeastOnce).await.unwrap();
+    let _ = eventloop1.poll().await.unwrap(); // suback
+
+    client1.disconnect().await.unwrap();
+    let _ = eventloop1.poll().await; // disconnect
+
+    let mut config2 = MqttOptions::new("conformance-offline-message-queue2", "localhost", 1883);
+    config2.set_keep_alive(Duration::from_secs(5));
+    config2.set_clean_session(true);
+
+    let (client2, mut eventloop2) = common::get_client(config2);
+    let _ = eventloop2.poll().await.unwrap(); // connack
+
+    client2
+        .publish("topic/a", QoS::AtMostOnce, true, "QoS::AtMostOnce")
+        .await
+        .unwrap();
+
+    client2
+        .publish("topic/b", QoS::AtLeastOnce, true, "QoS::AtLeastOnce")
+        .await
+        .unwrap();
+
+    let _ = eventloop2.poll().await.unwrap(); // incoming: puback
+
+    #[cfg(feature = "qos2")]
+    {
+        client2
+            .publish("topic/a", QoS::ExactlyOnce, true, "QoS::ExactlyOnce")
+            .await
+            .unwrap();
+
+        let _ = eventloop2.poll().await.unwrap(); // incoming: pubrec
+        let _ = eventloop2.poll().await.unwrap(); // incoming: pubcomp
+    }
+
+    client2.disconnect().await.unwrap();
+    let _ = eventloop2.poll().await;
+
+    let (_client1, mut eventloop1) = common::get_client(config1.clone());
+    let notif1 = eventloop1.poll().await.unwrap(); // connack
+
+    assert_eq!(
+        notif1,
+        Incoming::ConnAck(ConnAck {
+            session_present: true,
+            code: ConnectReturnCode::Success
+        })
+    );
+
+    // NOTE: We store QoS0 publish's when client is not connected.
+    let notif1 = eventloop1.poll().await.unwrap(); // QoS0 publish
+    let notif2 = eventloop1.poll().await.unwrap(); // QoS1 publish
+    let notif1_is_pubilsh = matches!(notif1, Incoming::Publish(Publish { .. }));
+    let notif2_is_pubilsh = matches!(notif2, Incoming::Publish(Publish { .. }));
+
+    match (notif1_is_pubilsh, notif2_is_pubilsh) {
+        (true, false) => {
+            yellow_ln!("Brokers doesn't queue's QoS0 messages for offline clients.");
+        }
+        (true, true) => {
+            yellow_ln!("Brokers queue's QoS0 messages for offline clients.");
+        }
+        _ => {
+            panic!("First notif should be a publish");
+        }
+    }
+    #[cfg(feature = "qos2")]
+    {
+        let notif3 = eventloop1.poll().await.unwrap(); // QoS2 publish
+    }
+    green_ln!("Offline message Queue test successful");
+}
 
 pub async fn test_will_message() {
     yellow_ln!("Will message test");
-    let mut config = MqttOptions::new("conformance-will-message", "localhost", 8083);
+    let mut config = MqttOptions::new("conformance-will-message", "localhost", 1883);
     config
         .set_clean_session(true)
         .set_last_will(LastWill::new(
@@ -464,7 +483,9 @@ pub async fn test_will_message() {
         })
     );
 
-    let config2 = MqttOptions::new("conformance-will-message2", "localhost", 8083);
+    let mut config2 = MqttOptions::new("conformance-will-message2", "localhost", 1883);
+    config2.set_keep_alive(Duration::from_secs(5));
+
     let (client2, mut eventloop2) = common::get_client(config2);
 
     let _ = eventloop2.poll().await.unwrap(); // connack
@@ -487,8 +508,9 @@ pub async fn test_will_message() {
 }
 
 pub async fn test_dollar_topic_filter() {
-    yellow_ln!("Subscribe failure test");
-    let config = MqttOptions::new("conformance-dollar-topic-filter", "localhost", 8083);
+    yellow_ln!("Dollar topic test");
+    let mut config = MqttOptions::new("conformance-dollar-topic-filter", "localhost", 1883);
+    config.set_keep_alive(Duration::from_secs(5));
 
     let (client1, mut eventloop1) = common::get_client(config.clone());
     let _ = eventloop1.poll().await.unwrap(); // connack
@@ -504,12 +526,13 @@ pub async fn test_dollar_topic_filter() {
 
     let notif1 = eventloop1.poll().await.unwrap();
     assert!(matches!(notif1, Incoming::PingResp));
-    green_ln!("Subscribe failure test Successful");
+    green_ln!("Dollar topic test Successful");
 }
 
 pub async fn test_unsubscribe() {
-    yellow_ln!("Subscribe failure test");
-    let config = MqttOptions::new("conformance-unsubscribe", "localhost", 8083);
+    yellow_ln!("Unsubscribe test");
+    let mut config = MqttOptions::new("conformance-unsubscribe", "localhost", 1883);
+    config.set_keep_alive(Duration::from_secs(5));
 
     let (client1, mut eventloop1) = common::get_client(config.clone());
     let _ = eventloop1.poll().await.unwrap(); // connack
@@ -530,7 +553,8 @@ pub async fn test_unsubscribe() {
     let notif1 = eventloop1.poll().await.unwrap(); // suback
     dbg!(notif1);
 
-    let config = MqttOptions::new("conformance-unsubscribe2", "localhost", 8083);
+    let mut config = MqttOptions::new("conformance-unsubscribe2", "localhost", 1883);
+    config.set_keep_alive(Duration::from_secs(5));
 
     let (client2, mut eventloop2) = common::get_client(config.clone());
     let _ = eventloop2.poll().await.unwrap(); // connack
@@ -557,12 +581,12 @@ pub async fn test_unsubscribe() {
     assert!(matches!(notif2, Incoming::Publish(Publish { .. })));
     let notif3 = eventloop1.poll().await.unwrap();
     assert!(matches!(notif3, Incoming::Publish(Publish { .. })));
-    green_ln!("Subscribe failure test Successful");
+    green_ln!("Unsubscribe test Successful");
 }
 
 pub async fn test_subscribe_failure() {
     yellow_ln!("Subscribe failure test");
-    let mut config = MqttOptions::new("conformance-sub-failure", "localhost", 8083);
+    let mut config = MqttOptions::new("conformance-sub-failure", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
 
     let (client, mut eventloop) = common::get_client(config);
@@ -585,9 +609,10 @@ pub async fn test_redelivery_on_reconnect() {
 }
 
 pub async fn test_connack_with_clean_session() {
+    yellow_ln!("Connack with clean session test");
     // To make sure any of the previous tests doesn't affect this create a connection and drop it
     // immediately to clean any previous state
-    let mut config = MqttOptions::new("conformance-connack-clean", "localhost", 8083);
+    let mut config = MqttOptions::new("conformance-connack-clean", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
     let (client, mut eventloop) = common::get_client(config);
     client.subscribe("topic/a", QoS::AtMostOnce).await.unwrap();
@@ -596,7 +621,7 @@ pub async fn test_connack_with_clean_session() {
     drop(eventloop);
 
     // Make a connection with clean_session false to create any random state
-    let mut config = MqttOptions::new("conformance-connack-clean", "localhost", 8083);
+    let mut config = MqttOptions::new("conformance-connack-clean", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
     config.set_clean_session(false);
     let (client, mut eventloop) = common::get_client(config);
@@ -607,7 +632,7 @@ pub async fn test_connack_with_clean_session() {
     drop(eventloop);
 
     // Should have a session present
-    let mut config = MqttOptions::new("conformance-connack-clean", "localhost", 8083);
+    let mut config = MqttOptions::new("conformance-connack-clean", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
     config.set_clean_session(false);
     let (client, mut eventloop) = common::get_client(config);
@@ -625,7 +650,7 @@ pub async fn test_connack_with_clean_session() {
     drop(eventloop);
 
     // Should drop previous_state if any and reply with session_present false
-    let mut config = MqttOptions::new("conformance-connack-clean", "localhost", 8083);
+    let mut config = MqttOptions::new("conformance-connack-clean", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
 
     let (_client, mut eventloop) = common::get_client(config);
@@ -639,4 +664,5 @@ pub async fn test_connack_with_clean_session() {
             code: ConnectReturnCode::Success
         })
     );
+    green_ln!("Connack with clean session test Successful");
 }

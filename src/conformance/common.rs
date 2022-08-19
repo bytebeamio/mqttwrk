@@ -1,5 +1,4 @@
 use rumqttc::{AsyncClient, ConnectionError, Event, EventLoop, Incoming, MqttOptions};
-use std::time::Duration;
 
 pub fn get_client(config: MqttOptions) -> (AsyncClient, WrappedEventLoop) {
     let (client, eventloop) = AsyncClient::new(config, 10);
