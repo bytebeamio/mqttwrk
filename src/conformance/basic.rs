@@ -1,11 +1,12 @@
 #![allow(unused_imports)]
 
 use crate::conformance::common::{self, WrappedEventLoop};
+use assert_matches::assert_matches;
 use colored::Colorize;
 use rumqttc::{
     matches, AsyncClient, ConnAck, ConnectReturnCode, Event, Incoming, LastWill, MqttOptions,
-    Outgoing, Packet, PubAck, Publish, QoS, SubAck, Subscribe, SubscribeFilter,
-    SubscribeReasonCode,
+    Outgoing, Packet, PubAck, PubRec, Publish, QoS, SubAck, Subscribe, SubscribeFilter,
+    SubscribeReasonCode, PubComp,
 };
 use std::thread;
 use std::time::Duration;
@@ -54,22 +55,19 @@ pub async fn test_basic() {
         })
     );
 
-    #[cfg(feature = "qos2")]
-    {
-        client
-            .subscribe("topic/q2", QoS::ExactlyOnce)
-            .await
-            .unwrap();
+    client
+        .subscribe("topic/q2", QoS::AtLeastOnce)
+        .await
+        .unwrap();
 
-        let incoming = eventloop.poll().await.unwrap(); // suback
-        assert_eq!(
-            incoming,
-            Incoming::SubAck(SubAck {
-                pkid: 3,
-                return_codes: [SubscribeReasonCode::Success(QoS::ExactlyOnce)].to_vec(),
-            })
-        );
-    }
+    let incoming = eventloop.poll().await.unwrap(); // suback
+    assert_eq!(
+        incoming,
+        Incoming::SubAck(SubAck {
+            pkid: 3,
+            return_codes: [SubscribeReasonCode::Success(QoS::AtLeastOnce)].to_vec(),
+        })
+    );
 
     // Qos 0 Publish
     client
@@ -93,19 +91,19 @@ pub async fn test_basic() {
     assert!(matches!(incoming, Incoming::Publish(Publish { .. })));
 
     // Qos 2 Publish
-    #[cfg(feature = "qos2")]
-    {
-        client
-            .publish("topic/q2", QoS::ExactlyOnce, false, "QoS::ExactlyOnce")
-            .await
-            .unwrap();
+    client
+        .publish("topic/q2", QoS::ExactlyOnce, false, "QoS::ExactlyOnce")
+        .await
+        .unwrap();
 
-        let incoming = eventloop.poll().await.unwrap(); // incoming:publish
-        assert!(matches!(incoming, Incoming::PubAck(PubAck { .. })));
+    let incoming = eventloop.poll().await.unwrap(); // incoming:publish
+    assert_matches!(incoming, Incoming::PubRec(PubRec { .. }));
 
-        let incoming = eventloop.poll().await.unwrap(); // incoming:publish
-        assert!(matches!(incoming, Incoming::Publish(Publish { .. })));
-    }
+    let incoming = eventloop.poll().await.unwrap(); // incoming:publish
+    assert_matches!(incoming, Incoming::PubComp(PubComp { .. }));
+
+    let incoming = eventloop.poll().await.unwrap(); // incoming:publish
+    assert_matches!(incoming, Incoming::Publish(Publish { .. }));
 
     green_ln!("Basic test succedeed")
 }
