@@ -232,6 +232,133 @@ pub async fn test_keepalive() {
     green_ln!("Ping test successful");
 }
 
+pub async fn test_retain_on_different_connect() {
+    yellow_ln!("Retained message test");
+
+    let mut config = MqttOptions::new("1conformance-retained-message", "localhost", 1883);
+    config.set_keep_alive(Duration::from_secs(5));
+
+    let (client, mut eventloop) = common::get_client(config.clone());
+
+    let qos0topic = "fromb/qos 0";
+    let qos1topic = "fromb/qos 1";
+    let qos2topic = "fromb/qos2";
+    let wildcardtopic = "fromb/+";
+
+    let notification1 = eventloop.poll().await.unwrap(); // connack
+    assert_eq!(
+        notification1,
+        Packet::ConnAck(ConnAck {
+            session_present: false,
+            code: ConnectReturnCode::Success
+        })
+    );
+
+    client
+        .publish(qos0topic, QoS::AtMostOnce, true, "QoS::AtMostOnce")
+        .await
+        .unwrap();
+
+    client
+        .publish(qos1topic, QoS::AtLeastOnce, true, "QoS::AtLeastOnce")
+        .await
+        .unwrap();
+
+    let _ = eventloop.poll().await.unwrap(); // incoming: puback
+
+    #[cfg(feature = "qos2")]
+    {
+        client
+            .publish(qos2topic, QoS::ExactlyOnce, true, "QoS::ExactlyOnce")
+            .await
+            .unwrap();
+
+        let _ = eventloop.poll().await.unwrap(); // incoming: pubrec
+        let _ = eventloop.poll().await.unwrap(); // incoming: pubcomp
+    }
+
+    client
+        .subscribe(wildcardtopic, QoS::AtMostOnce)
+        .await
+        .unwrap();
+    let _ = eventloop.poll().await.unwrap(); //suback
+
+    let notif1 = eventloop.poll().await.unwrap();
+    assert!(matches!(notif1, Incoming::Publish(Publish { .. })));
+
+    let notif2 = eventloop.poll().await.unwrap();
+    assert!(matches!(notif2, Incoming::Publish(Publish { .. })));
+
+    #[cfg(feature = "qos2")]
+    {
+        let notif3 = eventloop.poll().await.unwrap();
+        assert!(matches!(notif3, Incoming::Publish(Publish { .. })));
+    }
+
+    drop(client);
+    drop(eventloop);
+
+    let mut config2 = MqttOptions::new("2conformance-retained-message2", "localhost", 1883);
+    config2.set_keep_alive(Duration::from_secs(5));
+
+    let (client2, mut eventloop2) = common::get_client(config2.clone());
+
+    let _ = eventloop2.poll().await.unwrap(); // connack
+
+    client2
+        .subscribe(wildcardtopic, QoS::AtMostOnce)
+        .await
+        .unwrap();
+
+    let _ = eventloop2.poll().await.unwrap(); //suback
+
+    let notif1 = eventloop2.poll().await.unwrap();
+    assert!(matches!(notif1, Incoming::Publish(Publish { .. })));
+
+    let notif2 = eventloop2.poll().await.unwrap();
+    assert!(matches!(notif2, Incoming::Publish(Publish { .. })));
+
+    let (client, mut eventloop) = common::get_client(config.clone());
+
+    let notif1 = eventloop.poll().await.unwrap(); // connack
+    assert_eq!(
+        notif1,
+        Incoming::ConnAck(ConnAck {
+            session_present: false,
+            code: ConnectReturnCode::Success
+        })
+    );
+
+    client
+        .publish(qos0topic, QoS::AtMostOnce, true, "")
+        .await
+        .unwrap();
+
+    client
+        .publish(qos1topic, QoS::AtLeastOnce, true, "")
+        .await
+        .unwrap();
+
+    let _ = eventloop.poll().await.unwrap(); // incoming: puback
+
+    #[cfg(feature = "qos2")]
+    {
+        client
+            .publish(qos1topic, QoS::ExactlyOnce, true, "")
+            .await
+            .unwrap();
+
+        let _ = eventloop.poll().await.unwrap(); // incoming: pubrec
+        let _ = eventloop.poll().await.unwrap(); // incoming: pubcomp
+    }
+
+    let notif2 = eventloop.poll().await.unwrap();
+
+    // We cleared all the retained messages so should only receive pings
+    assert_eq!(notif2, Incoming::PingResp);
+    green_ln!("Retained message test Successfull");
+}
+
 // TODO: messages not being retained
 pub async fn test_retained_messages() {
     yellow_ln!("Retained message test");
@@ -285,11 +412,9 @@ pub async fn test_retained_messages() {
     let _ = eventloop.poll().await.unwrap(); //suback
 
     let notif1 = eventloop.poll().await.unwrap();
-    dbg!(notif1.clone());
     assert!(matches!(notif1, Incoming::Publish(Publish { .. })));
 
     let notif2 = eventloop.poll().await.unwrap();
-    dbg!(notif2.clone());
     assert!(matches!(notif2, Incoming::Publish(Publish { .. })));
 
     #[cfg(feature = "qos2")]
@@ -456,6 +581,19 @@ pub async fn test_offline_message_queueing() {
     {
         let notif3 = eventloop1.poll().await.unwrap(); // QoS2 publish
     }
+
+    client2
+        .publish("topic/a", QoS::AtLeastOnce, true, "")
+        .await
+        .unwrap();
+    let _ = eventloop2.poll().await.unwrap(); // incoming: puback
+
+    client2
+        .publish("topic/a", QoS::AtLeastOnce, true, "")
+        .await
+        .unwrap();
+    let _ = eventloop2.poll().await.unwrap(); // incoming: puback
+
     green_ln!("Offline message Queue test successful");
 }
 
@@ -604,8 +742,55 @@ pub async fn test_subscribe_failure() {
 }
 
 pub async fn test_redelivery_on_reconnect() {
-    // Need ability to not respond to publish messages but process outgoing requests
-    todo!();
+    yellow_ln!("Redelivery test");
+    let mut config = MqttOptions::new("conformance-test-redelivery", "localhost", 1883);
+    config
+        .set_keep_alive(Duration::from_secs(5))
+        .set_clean_session(false);
+
+    let (client, mut eventloop) = common::get_client(config.clone());
+    let _ = eventloop.poll().await.unwrap(); // connack
+
+    client.subscribe("topic/a", QoS::AtLeastOnce).await.unwrap();
+    let _ = eventloop.poll().await.unwrap(); // suback
+
+    drop(eventloop);
+
+    let mut config2 = MqttOptions::new("2conformance-test-redelivery2", "localhost", 1883);
+    config2.set_keep_alive(Duration::from_secs(5));
+
+    let (client2, mut eventloop2) = common::get_client(config2);
+    let _ = eventloop2.poll().await.unwrap(); // connack
+
+    // Qos 1 Publish
+    client2
+        .publish("topic/a", QoS::AtLeastOnce, false, "QoS::AtLeastOnce")
+        .await
+        .unwrap();
+
+    let _ = eventloop2.poll().await.unwrap(); // puback
+
+    #[cfg(feature = "qos2")]
+    {
+        // Qos 2 Publish
+        client2
+            .publish("topic/a", QoS::ExactlyOnce, false, "QoS::ExactlyOnce")
+            .await
+            .unwrap();
+    }
+
+    let (_, mut eventloop) = common::get_client(config);
+    let _ = eventloop.poll().await.unwrap(); // connack
+
+    let incoming1 = eventloop.poll().await.unwrap(); // incoming:publish
+    assert!(matches!(incoming1, Incoming::Publish(Publish { .. })));
+
+    #[cfg(feature = "qos2")]
+    {
+        let incoming2 = eventloop.poll().await.unwrap(); // incoming:publish
+        assert!(matches!(incoming2, Incoming::Publish(Publish { .. })));
+    }
+    green_ln!("Redelivery test Successful");
 }
 
 pub async fn test_connack_with_clean_session() {
