@@ -235,7 +235,7 @@ pub async fn test_keepalive() {
 pub async fn test_retain_on_different_connect() {
     yellow_ln!("Retained message test");
 
-    let mut config = MqttOptions::new("1conformance-retained-message", "localhost", 1883);
+    let mut config = MqttOptions::new("conformance-retained-message", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
 
     let (client, mut eventloop) = common::get_client(config.clone());
@@ -298,7 +298,7 @@ pub async fn test_retain_on_different_connect() {
     drop(client);
     drop(eventloop);
 
-    let mut config2 = MqttOptions::new("2conformance-retained-message2", "localhost", 1883);
+    let mut config2 = MqttOptions::new("conformance-retained-message2", "localhost", 1883);
     config2.set_keep_alive(Duration::from_secs(5));
 
     let (client2, mut eventloop2) = common::get_client(config2.clone());
@@ -356,7 +356,7 @@ pub async fn test_retain_on_different_connect() {
 
     // We cleared all the retained messages so should only receive pings
     assert_eq!(notif2, Incoming::PingResp);
-    green_ln!("Retained message test Successfull");
+    green_ln!("Retained message test Successful");
 }
 
 // TODO: messages not being retained
@@ -464,7 +464,7 @@ pub async fn test_retained_messages() {
 
     // We cleared all the retained messages so should only receive pings
     assert_eq!(notif2, Incoming::PingResp);
-    green_ln!("Retained message test Successfull");
+    green_ln!("Retained message test Successful");
 }
 
 // TODO: Currently rumqttc panics for this test. According to spec broker should be the one handling this not client
@@ -741,6 +741,7 @@ pub async fn test_subscribe_failure() {
     green_ln!("Subscribe failure test Successful");
 }
 
+// TODO: re-eval this after retransmission is implemented in broker
 pub async fn test_redelivery_on_reconnect() {
     yellow_ln!("Redelivery test");
     let mut config = MqttOptions::new("conformance-test-redelivery", "localhost", 1883);
@@ -751,16 +752,16 @@ pub async fn test_redelivery_on_reconnect() {
     let (client, mut eventloop) = common::get_client(config.clone());
     let _ = eventloop.poll().await.unwrap(); // connack
 
-    client.subscribe("topic/a", QoS::AtLeastOnce).await.unwrap();
+    client.subscribe("+/+", QoS::AtMostOnce).await.unwrap();
     let _ = eventloop.poll().await.unwrap(); // suback
 
-    drop(eventloop);
-
-    let mut config2 = MqttOptions::new("2conformance-test-redelivery2", "localhost", 1883);
+    let mut config2 = MqttOptions::new("conformance-test-redelivery2", "localhost", 1883);
     config2.set_keep_alive(Duration::from_secs(5));
 
     let (client2, mut eventloop2) = common::get_client(config2);
     let _ = eventloop2.poll().await.unwrap(); // connack
+
+    drop(eventloop);
 
     // Qos 1 Publish
     client2
@@ -783,6 +784,7 @@ pub async fn test_redelivery_on_reconnect() {
     let _ = eventloop.poll().await.unwrap(); // connack
 
     let incoming1 = eventloop.poll().await.unwrap(); // incoming:publish
+    dbg!(incoming1.clone());
     assert!(matches!(incoming1, Incoming::Publish(Publish { .. })));
 
     #[cfg(feature = "qos2")]

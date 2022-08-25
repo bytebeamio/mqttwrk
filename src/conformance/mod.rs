@@ -14,14 +14,14 @@ pub async fn start() {
     test_subscribe_failure().await;
     test_dollar_topic_filter().await;
     test_redelivery_on_reconnect().await;
-    test_retain_on_different_connect().await;
+    test_overlapping_subscriptions().await;
 
-    // test_overlapping_subscriptions().await;
+    test_retained_messages().await;
+    test_retain_on_different_connect().await;
 
     // TODO: We don't yet support unsubscribe
     // test_unsubscribe().await;
 
     // NOTE: rumqttc don't allow empty clientID with clean_session false
     // test_zero_length_clientid().await;
-    // test_retained_messages().await;
 }
