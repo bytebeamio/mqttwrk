@@ -5,7 +5,7 @@ use colored::Colorize;
 use rumqttc::{
     matches, AsyncClient, ConnAck, ConnectReturnCode, Event, Incoming, LastWill, MqttOptions,
     Outgoing, Packet, PubAck, Publish, QoS, SubAck, Subscribe, SubscribeFilter,
-    SubscribeReasonCode,
+    SubscribeReasonCode, UnsubAck,
 };
 use std::thread;
 use std::time::Duration;
@@ -187,7 +187,7 @@ pub async fn test_overlapping_subscriptions() {
 
     let notif1 = eventloop.poll().await.unwrap(); // publish from topic/+
     let notif2 = eventloop.poll().await.unwrap(); // publish from topic/#
-    dbg!(notif1.clone(), notif2.clone());
+    dbg!(&notif1, &notif2);
 
     let notif1_is_publish = matches!(notif1, Incoming::Publish(Publish { .. }));
     let notif2_is_publish = matches!(notif2, Incoming::Publish(Publish { .. }));
@@ -242,7 +242,10 @@ pub async fn test_retain_on_different_connect() {
 
     let qos0topic = "fromb/qos 0";
     let qos1topic = "fromb/qos 1";
-    let qos2topic = "fromb/qos2";
+    #[cfg(feature = "qos2")]
+    {
+        let qos2topic = "fromb/qos2";
+    }
     let wildcardtopic = "fromb/+";
 
     let notification1 = eventloop.poll().await.unwrap(); // connack
@@ -370,7 +373,10 @@ pub async fn test_retained_messages() {
 
     let qos0topic = "fromb/qos 0";
     let qos1topic = "fromb/qos 1";
-    let qos2topic = "fromb/qos2";
+    #[cfg(feature = "qos2")]
+    {
+        let qos2topic = "fromb/qos2";
+    }
     let wildcardtopic = "fromb/+";
 
     let notification1 = eventloop.poll().await.unwrap(); // connack
@@ -688,8 +694,9 @@ pub async fn test_unsubscribe() {
     let _ = eventloop1.poll().await.unwrap(); // suback
 
     client1.unsubscribe("topicA").await.unwrap();
-    let notif1 = eventloop1.poll().await.unwrap(); // suback
-    dbg!(notif1);
+    let notif1 = eventloop1.poll().await.unwrap(); // unsuback
+
+    assert!(matches!(notif1, Incoming::UnsubAck(UnsubAck { .. })));
 
     let mut config = MqttOptions::new("conformance-unsubscribe2", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
@@ -714,11 +721,18 @@ pub async fn test_unsubscribe() {
     let _ = eventloop2.poll().await.unwrap(); // puback
 
     let notif1 = eventloop1.poll().await.unwrap();
+    dbg!(&notif1);
     assert!(matches!(notif1, Incoming::Publish(Publish { .. })));
+
     let notif2 = eventloop1.poll().await.unwrap();
+    dbg!(&notif2);
     assert!(matches!(notif2, Incoming::Publish(Publish { .. })));
-    let notif3 = eventloop1.poll().await.unwrap();
-    assert!(matches!(notif3, Incoming::Publish(Publish { .. })));
+
+    for _ in 0..5 {
+        let notif3 = eventloop1.poll().await.unwrap();
+        dbg!(&notif3);
+        assert!(matches!(notif3, Incoming::PingResp));
+    }
     green_ln!("Unsubscribe test Successful");
 }
 
@@ -752,8 +766,10 @@ pub async fn test_redelivery_on_reconnect() {
     let (client, mut eventloop) = common::get_client(config.clone());
     let _ = eventloop.poll().await.unwrap(); // connack
 
-    client.subscribe("+/+", QoS::AtMostOnce).await.unwrap();
+    client.subscribe("+/+", QoS::AtLeastOnce).await.unwrap();
     let _ = eventloop.poll().await.unwrap(); // suback
+
+    drop(eventloop);
 
     let mut config2 = MqttOptions::new("conformance-test-redelivery2", "localhost", 1883);
     config2.set_keep_alive(Duration::from_secs(5));
@@ -761,15 +777,15 @@ pub async fn test_redelivery_on_reconnect() {
     let (client2, mut eventloop2) = common::get_client(config2);
     let _ = eventloop2.poll().await.unwrap(); // connack
 
-    drop(eventloop);
-
     // Qos 1 Publish
     client2
-        .publish("topic/a", QoS::AtLeastOnce, false, "QoS::AtLeastOnce")
-        .await
-        .unwrap();
+            .publish("topic/a", QoS::AtLeastOnce, false, "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111")
+            .await
+            .unwrap();
 
     let _ = eventloop2.poll().await.unwrap(); // puback
+
+    // drop(eventloop);
 
     #[cfg(feature = "qos2")]
     {
@@ -784,7 +800,7 @@ pub async fn test_redelivery_on_reconnect() {
     let _ = eventloop.poll().await.unwrap(); // connack
 
     let incoming1 = eventloop.poll().await.unwrap(); // incoming:publish
-    dbg!(incoming1.clone());
+    dbg!(&incoming1);
     assert!(matches!(incoming1, Incoming::Publish(Publish { .. })));
 
     #[cfg(feature = "qos2")]
