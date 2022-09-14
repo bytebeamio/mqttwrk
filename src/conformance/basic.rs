@@ -705,27 +705,25 @@ pub async fn test_unsubscribe() {
     let _ = eventloop2.poll().await.unwrap(); // connack
 
     client2
-        .publish("topicA", QoS::AtMostOnce, false, "")
+        .publish("topicA", QoS::AtLeastOnce, false, "")
         .await
         .unwrap();
     let _ = eventloop2.poll().await.unwrap(); // puback
     client2
-        .publish("topicA/B", QoS::AtMostOnce, false, "")
+        .publish("topicA/B", QoS::AtLeastOnce, false, "")
         .await
         .unwrap();
     let _ = eventloop2.poll().await.unwrap(); // puback
     client2
-        .publish("topicC", QoS::AtMostOnce, false, "")
+        .publish("topicC", QoS::AtLeastOnce, false, "")
         .await
         .unwrap();
     let _ = eventloop2.poll().await.unwrap(); // puback
 
     let notif1 = eventloop1.poll().await.unwrap();
-    dbg!(&notif1);
     assert!(matches!(notif1, Incoming::Publish(Publish { .. })));
 
     let notif2 = eventloop1.poll().await.unwrap();
-    dbg!(&notif2);
     assert!(matches!(notif2, Incoming::Publish(Publish { .. })));
 
     for _ in 0..5 {
