@@ -767,23 +767,35 @@ pub async fn test_redelivery_on_reconnect() {
     client.subscribe("+/+", QoS::AtLeastOnce).await.unwrap();
     let _ = eventloop.poll().await.unwrap(); // suback
 
-    drop(eventloop);
-
     let mut config2 = MqttOptions::new("conformance-test-redelivery2", "localhost", 1883);
     config2.set_keep_alive(Duration::from_secs(5));
 
     let (client2, mut eventloop2) = common::get_client(config2);
     let _ = eventloop2.poll().await.unwrap(); // connack
 
-    // Qos 1 Publish
-    client2
+    // client2
+    //     .publish("topic/a", QoS::AtLeastOnce, false, "test")
+    //     .await
+    //     .unwrap();
+    //
+    // let _ = eventloop2.poll().await.unwrap(); // puback
+    //
+    // let incoming1 = eventloop.poll().await.unwrap(); // incoming:publish
+    // dbg!(&incoming1);
+    // assert!(matches!(incoming1, Incoming::Publish(Publish { .. })));
+
+    for _ in 0..100 {
+        // Qos 1 Publish
+        client2
             .publish("topic/a", QoS::AtLeastOnce, false, "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111")
             .await
             .unwrap();
 
-    let _ = eventloop2.poll().await.unwrap(); // puback
-
-    // drop(eventloop);
+        let _ = eventloop2.poll().await.unwrap(); // puback
+    }
+    // We drop after publishing from other client so that publish is queued to send to this
+    // subscription
+    drop(eventloop);
 
     #[cfg(feature = "qos2")]
     {
