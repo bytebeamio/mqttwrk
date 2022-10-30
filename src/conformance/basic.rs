@@ -756,7 +756,7 @@ pub async fn test_subscribe_failure() {
 // TODO: re-eval this after retransmission is implemented in broker
 pub async fn test_redelivery_on_reconnect() {
     yellow_ln!("Redelivery test");
-    let mut config = MqttOptions::new("conformance-test-redelivery", "localhost", 1883);
+    let mut config = MqttOptions::new("redelivery-subscriber", "localhost", 1883);
     config
         .set_keep_alive(Duration::from_secs(5))
         .set_clean_session(false);
@@ -767,7 +767,7 @@ pub async fn test_redelivery_on_reconnect() {
     client.subscribe("+/+", QoS::AtLeastOnce).await.unwrap();
     let _ = eventloop.poll().await.unwrap(); // suback
 
-    let mut config2 = MqttOptions::new("conformance-test-redelivery2", "localhost", 1883);
+    let mut config2 = MqttOptions::new("redelivery-publisher", "localhost", 1883);
     config2.set_keep_alive(Duration::from_secs(5));
 
     let (client2, mut eventloop2) = common::get_client(config2);
@@ -793,9 +793,20 @@ pub async fn test_redelivery_on_reconnect() {
 
         let _ = eventloop2.poll().await.unwrap(); // puback
     }
+
     // We drop after publishing from other client so that publish is queued to send to this
     // subscription
     drop(eventloop);
+
+    for _ in 0..100 {
+        // Qos 1 Publish
+        client2
+            .publish("topic/a", QoS::AtLeastOnce, false, "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111")
+            .await
+            .unwrap();
+
+        let _ = eventloop2.poll().await.unwrap(); // puback
+    }
 
     #[cfg(feature = "qos2")]
     {
@@ -809,9 +820,16 @@ pub async fn test_redelivery_on_reconnect() {
     let (_, mut eventloop) = common::get_client(config);
     let _ = eventloop.poll().await.unwrap(); // connack
 
-    let incoming1 = eventloop.poll().await.unwrap(); // incoming:publish
-    dbg!(&incoming1);
-    assert!(matches!(incoming1, Incoming::Publish(Publish { .. })));
+    for i in 1..=100 {
+        let incoming1 = eventloop.poll().await.unwrap(); // incoming:publish
+        assert!(matches!(
+            incoming1,
+            Incoming::Publish(Publish { pkid: i, .. })
+        ));
+    }
+
+    let incoming = eventloop.poll().await.unwrap(); // connack
+    assert!(matches!(incoming, Incoming::PingResp));
 
     #[cfg(feature = "qos2")]
     {
