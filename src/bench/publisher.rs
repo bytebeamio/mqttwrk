@@ -1,9 +1,7 @@
 use std::{fs, io, sync::Arc, time::Instant};
 
 use hdrhistogram::Histogram;
-use rumqttc::{
-    AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, QoS, Transport,
-};
+use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, QoS, Transport};
 use tokio::{
     task,
     time::{self, Duration},
@@ -133,7 +131,7 @@ impl Publisher {
                     latencies[pkid as usize] = Some(Instant::now());
                 }
                 Event::Outgoing(Outgoing::PingReq) => {
-                    debug!("ping request") 
+                    debug!("ping request")
                 }
                 _ => (),
             }
