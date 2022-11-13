@@ -54,23 +54,6 @@ pub async fn test_basic() {
         })
     );
 
-    #[cfg(feature = "qos2")]
-    {
-        client
-            .subscribe("topic/q2", QoS::ExactlyOnce)
-            .await
-            .unwrap();
-
-        let incoming = eventloop.poll().await.unwrap(); // suback
-        assert_eq!(
-            incoming,
-            Incoming::SubAck(SubAck {
-                pkid: 3,
-                return_codes: [SubscribeReasonCode::Success(QoS::ExactlyOnce)].to_vec(),
-            })
-        );
-    }
-
     // Qos 0 Publish
     client
         .publish("topic/q0", QoS::AtMostOnce, false, "QoS::AtMostOnce")
@@ -91,21 +74,6 @@ pub async fn test_basic() {
 
     let incoming = eventloop.poll().await.unwrap(); // incoming:publish
     assert!(matches!(incoming, Incoming::Publish(Publish { .. })));
-
-    // Qos 2 Publish
-    #[cfg(feature = "qos2")]
-    {
-        client
-            .publish("topic/q2", QoS::ExactlyOnce, false, "QoS::ExactlyOnce")
-            .await
-            .unwrap();
-
-        let incoming = eventloop.poll().await.unwrap(); // incoming:publish
-        assert!(matches!(incoming, Incoming::PubAck(PubAck { .. })));
-
-        let incoming = eventloop.poll().await.unwrap(); // incoming:publish
-        assert!(matches!(incoming, Incoming::Publish(Publish { .. })));
-    }
 
     green_ln!("Basic test succedeed")
 }
@@ -242,10 +210,6 @@ pub async fn test_retain_on_different_connect() {
 
     let qos0topic = "fromb/qos 0";
     let qos1topic = "fromb/qos 1";
-    #[cfg(feature = "qos2")]
-    {
-        let qos2topic = "fromb/qos2";
-    }
     let wildcardtopic = "fromb/+";
 
     let notification1 = eventloop.poll().await.unwrap(); // connack
@@ -269,17 +233,6 @@ pub async fn test_retain_on_different_connect() {
 
     let _ = eventloop.poll().await.unwrap(); // incoming: puback
 
-    #[cfg(feature = "qos2")]
-    {
-        client
-            .publish(qos2topic, QoS::ExactlyOnce, true, "QoS::ExactlyOnce")
-            .await
-            .unwrap();
-
-        let _ = eventloop.poll().await.unwrap(); // incoming: pubrec
-        let _ = eventloop.poll().await.unwrap(); // incoming: pubcomp
-    }
-
     client
         .subscribe(wildcardtopic, QoS::AtMostOnce)
         .await
@@ -291,12 +244,6 @@ pub async fn test_retain_on_different_connect() {
 
     let notif2 = eventloop.poll().await.unwrap();
     assert!(matches!(notif2, Incoming::Publish(Publish { .. })));
-
-    #[cfg(feature = "qos2")]
-    {
-        let notif3 = eventloop.poll().await.unwrap();
-        assert!(matches!(notif3, Incoming::Publish(Publish { .. })));
-    }
 
     drop(client);
     drop(eventloop);
@@ -344,17 +291,6 @@ pub async fn test_retain_on_different_connect() {
 
     let _ = eventloop.poll().await.unwrap(); // incoming: puback
 
-    #[cfg(feature = "qos2")]
-    {
-        client
-            .publish(qos1topic, QoS::ExactlyOnce, true, "")
-            .await
-            .unwrap();
-
-        let _ = eventloop.poll().await.unwrap(); // incoming: pubrec
-        let _ = eventloop.poll().await.unwrap(); // incoming: pubcomp
-    }
-
     let notif2 = eventloop.poll().await.unwrap();
 
     // We cleared all the retained messages so should only receive pings
@@ -373,10 +309,6 @@ pub async fn test_retained_messages() {
 
     let qos0topic = "fromb/qos 0";
     let qos1topic = "fromb/qos 1";
-    #[cfg(feature = "qos2")]
-    {
-        let qos2topic = "fromb/qos2";
-    }
     let wildcardtopic = "fromb/+";
 
     let notification1 = eventloop.poll().await.unwrap(); // connack
@@ -400,17 +332,6 @@ pub async fn test_retained_messages() {
 
     let _ = eventloop.poll().await.unwrap(); // incoming: puback
 
-    #[cfg(feature = "qos2")]
-    {
-        client
-            .publish(qos2topic, QoS::ExactlyOnce, true, "QoS::ExactlyOnce")
-            .await
-            .unwrap();
-
-        let _ = eventloop.poll().await.unwrap(); // incoming: pubrec
-        let _ = eventloop.poll().await.unwrap(); // incoming: pubcomp
-    }
-
     client
         .subscribe(wildcardtopic, QoS::AtMostOnce)
         .await
@@ -422,12 +343,6 @@ pub async fn test_retained_messages() {
 
     let notif2 = eventloop.poll().await.unwrap();
     assert!(matches!(notif2, Incoming::Publish(Publish { .. })));
-
-    #[cfg(feature = "qos2")]
-    {
-        let notif3 = eventloop.poll().await.unwrap();
-        assert!(matches!(notif3, Incoming::Publish(Publish { .. })));
-    }
 
     drop(client);
     drop(eventloop);
@@ -454,17 +369,6 @@ pub async fn test_retained_messages() {
         .unwrap();
 
     let _ = eventloop.poll().await.unwrap(); // incoming: puback
-
-    #[cfg(feature = "qos2")]
-    {
-        client
-            .publish(qos1topic, QoS::ExactlyOnce, true, "")
-            .await
-            .unwrap();
-
-        let _ = eventloop.poll().await.unwrap(); // incoming: pubrec
-        let _ = eventloop.poll().await.unwrap(); // incoming: pubcomp
-    }
 
     let notif2 = eventloop.poll().await.unwrap();
 
@@ -541,17 +445,6 @@ pub async fn test_offline_message_queueing() {
 
     let _ = eventloop2.poll().await.unwrap(); // incoming: puback
 
-    #[cfg(feature = "qos2")]
-    {
-        client2
-            .publish("topic/a", QoS::ExactlyOnce, true, "QoS::ExactlyOnce")
-            .await
-            .unwrap();
-
-        let _ = eventloop2.poll().await.unwrap(); // incoming: pubrec
-        let _ = eventloop2.poll().await.unwrap(); // incoming: pubcomp
-    }
-
     client2.disconnect().await.unwrap();
     let _ = eventloop2.poll().await;
 
@@ -582,10 +475,6 @@ pub async fn test_offline_message_queueing() {
         _ => {
             panic!("First notif should be a publish");
         }
-    }
-    #[cfg(feature = "qos2")]
-    {
-        let notif3 = eventloop1.poll().await.unwrap(); // QoS2 publish
     }
 
     client2
@@ -785,15 +674,6 @@ pub async fn test_redelivery_on_reconnect() {
 
     // drop(eventloop);
 
-    #[cfg(feature = "qos2")]
-    {
-        // Qos 2 Publish
-        client2
-            .publish("topic/a", QoS::ExactlyOnce, false, "QoS::ExactlyOnce")
-            .await
-            .unwrap();
-    }
-
     let (_, mut eventloop) = common::get_client(config);
     let _ = eventloop.poll().await.unwrap(); // connack
 
@@ -801,11 +681,6 @@ pub async fn test_redelivery_on_reconnect() {
     dbg!(&incoming1);
     assert!(matches!(incoming1, Incoming::Publish(Publish { .. })));
 
-    #[cfg(feature = "qos2")]
-    {
-        let incoming2 = eventloop.poll().await.unwrap(); // incoming:publish
-        assert!(matches!(incoming2, Incoming::Publish(Publish { .. })));
-    }
     green_ln!("Redelivery test Successful");
 }
 
