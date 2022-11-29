@@ -1,21 +1,33 @@
-# ------------------------------------------------------------------------------
-# Cargo Build Stage
-# ------------------------------------------------------------------------------
+FROM rust:1.65 AS build
 
-FROM rust:latest as cargo-build
-WORKDIR /usr/src/mqttwrk
-COPY Cargo.toml Cargo.toml
-RUN mkdir src/
-COPY . .
+# Cache build
+# https://dev.to/rogertorres/first-steps-with-docker-rust-30oi
+WORKDIR /usr/share/bytebeam/mqttwrk
+RUN cargo init --bin
+
+COPY ./Cargo.toml .
 RUN cargo build --release
-RUN cargo install --path .
 
-# ------------------------------------------------------------------------------
-# Final Stage
-# ------------------------------------------------------------------------------
+# Actual build
+COPY . /usr/share/bytebeam/mqttwrk
+WORKDIR /usr/share/bytebeam/mqttwrk
 
-FROM ubuntu:latest
+RUN rm ./target/release/deps/mqttwrk*
+RUN cargo build --release
 
-COPY --from=cargo-build /usr/local/cargo/bin/mqttwrk /usr/local/bin/mqttwrk
+# ---------------------------------------
 
-ENTRYPOINT ["mqttwrk"]
+FROM ubuntu:22.04
+
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+
+RUN apt-get -y upgrade
+RUN apt-get update
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y sudo curl runit vim wget gnupg2 lsb-release
+
+
+COPY --from=build /usr/share/bytebeam/mqttwrk /usr/share/bytebeam/mqttwrk
+WORKDIR /usr/share/bytebeam/mqttwrk
+
+ENTRYPOINT ["./target/release/mqttwrk", "bench", "-n", "20", "-a", "1", "-b", "0", "-r", "1"] 

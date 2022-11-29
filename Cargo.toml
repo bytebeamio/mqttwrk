@@ -16,7 +16,7 @@ qos2 = []
 bytes = "1"
 anyhow = "1"
 uuid = { version = "1", features = ["v4"] }
-rumqttc = "0.13.0"
+rumqttc = "0.18.0"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 rand = "0.8"
