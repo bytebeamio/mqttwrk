@@ -21,7 +21,7 @@ use structopt::StructOpt;
 #[derive(Debug, StructOpt)]
 #[structopt(
     name = "mqttwrk",
-    about = "A MQTT server bench marking tool inspired by wrk."
+    about = "A MQTT server benchmarking tool inspired by wrk."
 )]
 
 enum Config {
@@ -39,16 +39,16 @@ struct BenchConfig {
     #[structopt(short = "n", long, default_value = "100")]
     count: usize,
     /// server
-    #[structopt(short = "h", long, default_value = "localhost")]
+    #[structopt(short = "S", long, default_value = "localhost")]
     server: String,
     /// port
-    #[structopt(short = "p", long, default_value = "1883")]
+    #[structopt(short = "P", long, default_value = "1883")]
     port: u16,
-    // number of publishers
-    #[structopt(short = "a", default_value = "1")]
+    /// number of publishers
+    #[structopt(short = "p", default_value = "1")]
     publishers: usize,
-    // number of subscribers
-    #[structopt(short = "b", default_value = "0")]
+    /// number of subscribers
+    #[structopt(short = "s", default_value = "0")]
     subscribers: usize,
     /// qos, default 0
     #[structopt(short = "x", default_value = "1")]
