@@ -143,7 +143,8 @@ impl Subscriber {
             }
         }
 
-        let outgoing_throughput = (publish_count * 1000) as f32 / (last_publish - start).as_millis() as f32;
+        let outgoing_throughput =
+            (publish_count * 1000) as f32 / (last_publish - start).as_millis() as f32;
 
         println!(
             "Id = {}

@@ -242,10 +242,6 @@ pub async fn test_retain_on_different_connect() {
 
     let qos0topic = "fromb/qos 0";
     let qos1topic = "fromb/qos 1";
-    #[cfg(feature = "qos2")]
-    {
-        let qos2topic = "fromb/qos2";
-    }
     let wildcardtopic = "fromb/+";
 
     let notification1 = eventloop.poll().await.unwrap(); // connack
@@ -271,6 +267,7 @@ pub async fn test_retain_on_different_connect() {
 
     #[cfg(feature = "qos2")]
     {
+        let qos2topic = "fromb/qos2";
         client
             .publish(qos2topic, QoS::ExactlyOnce, true, "QoS::ExactlyOnce")
             .await
@@ -373,10 +370,6 @@ pub async fn test_retained_messages() {
 
     let qos0topic = "fromb/qos 0";
     let qos1topic = "fromb/qos 1";
-    #[cfg(feature = "qos2")]
-    {
-        let qos2topic = "fromb/qos2";
-    }
     let wildcardtopic = "fromb/+";
 
     let notification1 = eventloop.poll().await.unwrap(); // connack
@@ -402,6 +395,7 @@ pub async fn test_retained_messages() {
 
     #[cfg(feature = "qos2")]
     {
+        let qos2topic = "fromb/qos2";
         client
             .publish(qos2topic, QoS::ExactlyOnce, true, "QoS::ExactlyOnce")
             .await
@@ -585,7 +579,7 @@ pub async fn test_offline_message_queueing() {
     }
     #[cfg(feature = "qos2")]
     {
-        let notif3 = eventloop1.poll().await.unwrap(); // QoS2 publish
+        let _notif3 = eventloop1.poll().await.unwrap(); // QoS2 publish
     }
 
     client2
