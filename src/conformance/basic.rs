@@ -633,7 +633,7 @@ pub async fn test_subscribe_failure() {
     let _ = eventloop.poll().await.unwrap(); // connack
 
     client
-        .subscribe("test/shouldfail", QoS::AtMostOnce)
+        .subscribe("$SYS/rumqttd/donotsubscribe", QoS::AtMostOnce)
         .await
         .unwrap();
 
