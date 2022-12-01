@@ -11,5 +11,5 @@ Wrk/Wrk2 inspired tool for conformance and scale testing mqtt brokers
   - 1 message/second frequency per publisher
 
 ```bash
-cargo run --release -- bench -n 20 -a 1 -b 0 -r 1
+cargo run --release -- bench -n 20 -p 1 -s 0 -r 1
 ```

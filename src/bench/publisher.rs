@@ -208,7 +208,7 @@ async fn requests(
             .publish(topic.as_str(), QoS::AtLeastOnce, false, payload)
             .await
         {
-            return;
+            // TODO
         }
     }
 }

@@ -157,7 +157,7 @@ async fn connect(eventloop: &mut EventLoop) {
     let event = eventloop.poll().await.unwrap();
     if let Event::Incoming(v) = event {
         match v {
-            Incoming::ConnAck(_) => return,
+            Incoming::ConnAck(_) => (),
             incoming => unreachable!("Expecting connack packet. Received = {:?}", incoming),
         }
     }

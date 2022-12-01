@@ -191,7 +191,7 @@ async fn connection(
                     rumqttc::Packet::Publish(_) if stop.is_cancelled() => {
                         // Calculate the rate in pub + res in per s
                         let micros = Instant::now().duration_since(start).as_micros() + 1;
-                        let rate = (publications_received as u128 * 1000_000) / micros;
+                        let rate = (publications_received as u128 * 1_000_000) / micros;
                         let v = Status {
                             id: n,
                             sent: publications_sent,
@@ -208,7 +208,7 @@ async fn connection(
                         if let Some(max_publishes) = opt.max_publishes {
                             if publications_sent >= max_publishes {
                                 let micros = Instant::now().duration_since(start).as_micros() + 1;
-                                let rate = (publications_received as u128 * 1000_000) / micros;
+                                let rate = (publications_received as u128 * 1_000_000) / micros;
 
                                 let v = Status {
                                     id: n,
