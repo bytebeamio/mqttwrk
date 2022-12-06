@@ -26,8 +26,10 @@ RUN apt-get -y upgrade
 RUN apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y sudo curl runit vim wget gnupg2 lsb-release
 
+COPY runit/ /etc/runit
+RUN rm -rf /etc/runit/runsvdir
 
 COPY --from=build /usr/share/bytebeam/mqttwrk /usr/share/bytebeam/mqttwrk
 WORKDIR /usr/share/bytebeam/mqttwrk
 
-ENTRYPOINT ["./target/release/mqttwrk", "bench", "-n", "20", "-a", "1", "-b", "0", "-r", "1"] 
+CMD ["/usr/bin/runsvdir", "/etc/runit"]
