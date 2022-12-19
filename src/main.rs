@@ -97,6 +97,9 @@ struct RoundConfig {
 
 #[derive(Debug, StructOpt)]
 struct SimulatorConfig {
+    /// default topic format to which data is published to. `{}` is replaced by publisher_id
+    #[structopt(long, default_value = "/tenants/demo/devices/{}/events/imu/jsonarray")]
+    topic_format: String,
     /// number of messages (n = 0 is for idle connection to test pings)
     #[structopt(short = "n", long, default_value = "100")]
     count: usize,

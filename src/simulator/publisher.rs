@@ -1,4 +1,8 @@
-use std::{fs, io, sync::Arc, time::Instant};
+use std::{
+    fs, io,
+    sync::Arc,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
 
 use fake::{Dummy, Fake, Faker};
 use hdrhistogram::Histogram;
@@ -13,6 +17,8 @@ use crate::{bench::ConnectionError, SimulatorConfig};
 
 #[derive(Debug, Serialize, Dummy)]
 struct Imu {
+    sequence: u32,
+    timestamp: u64,
     ax: f64,
     ay: f64,
     az: f64,
@@ -80,7 +86,7 @@ impl Publisher {
         let mut outgoing_elapsed = Duration::from_secs(0);
         let mut acks_count = 0;
 
-        let topic = format!("/devices/{}/events/imu/json", self.id);
+        let topic = self.config.topic_format.replace("{}", &self.id);
         let client = self.client.clone();
 
         // If publish count is 0, don't publish. This is an idle connection
@@ -187,6 +193,27 @@ impl Publisher {
     }
 }
 
+fn dummy_imu(sequence: u32) -> Imu {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    Imu {
+        sequence,
+        timestamp,
+        ax: Faker.fake::<f64>(),
+        ay: Faker.fake::<f64>(),
+        az: Faker.fake::<f64>(),
+        pitch: Faker.fake::<f64>(),
+        roll: Faker.fake::<f64>(),
+        yaw: Faker.fake::<f64>(),
+        magx: Faker.fake::<f64>(),
+        magy: Faker.fake::<f64>(),
+        magz: Faker.fake::<f64>(),
+    }
+}
+
 /// make count number of requests at specified QoS.
 async fn requests(topic: String, count: usize, client: AsyncClient, qos: QoS, delay: u64) {
     let mut interval = match delay {
@@ -195,7 +222,8 @@ async fn requests(topic: String, count: usize, client: AsyncClient, qos: QoS, de
     };
 
     for i in 0..count {
-        let payload = serde_json::to_string(&Faker.fake::<Imu>()).unwrap();
+        let fake_data = vec![dummy_imu(i as u32)];
+        let payload = serde_json::to_string(&fake_data).unwrap();
         if let Some(interval) = &mut interval {
             interval.tick().await;
         }
