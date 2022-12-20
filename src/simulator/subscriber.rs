@@ -1,11 +1,11 @@
 use std::{
     sync::Arc,
-    thread,
     time::{Duration, Instant},
 };
 
 use hdrhistogram::Histogram;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, Outgoing};
+use tokio::time;
 
 use crate::{
     simulator::{get_qos, options, ConnectionError},
@@ -146,7 +146,7 @@ impl Subscriber {
                     // slow consumer every 100 messages
                     if seq % 100 == 0 && self.config.sleep_sub != 0 {
                         println!("sleeping {} seconds ...", self.config.sleep_sub);
-                        thread::sleep(Duration::from_secs(self.config.sleep_sub));
+                        time::sleep(Duration::from_secs(self.config.sleep_sub)).await;
                     }
                 }
                 Event::Incoming(Incoming::PingResp) | Event::Outgoing(_) => {}
