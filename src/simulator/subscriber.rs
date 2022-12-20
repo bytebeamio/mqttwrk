@@ -36,7 +36,10 @@ impl Subscriber {
 
         // subscribing
         client
-            .subscribe("hello/+/world", get_qos(config.subscribe_qos))
+            .subscribe(
+                config.topic_format.replace("{}", &"+"),
+                get_qos(config.subscribe_qos),
+            )
             .await?;
 
         // waiting for subscription confirmation
