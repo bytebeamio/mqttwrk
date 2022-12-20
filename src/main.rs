@@ -135,8 +135,10 @@ struct SimulatorConfig {
     #[structopt(short = "t", long, default_value = "5")]
     conn_timeout: u64,
     /// message rate. 0 => no throttle
-    #[structopt(short = "r", long, default_value = "0")]
-    rate: u64,
+    #[structopt(long, default_value = "0")]
+    rate_pub: u64,
+    #[structopt(long, default_value = "0")]
+    sleep_sub: u64,
 }
 
 fn main() {

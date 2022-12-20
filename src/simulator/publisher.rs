@@ -78,7 +78,7 @@ impl Publisher {
         let qos = get_qos(self.config.publish_qos);
         let inflight = self.config.max_inflight;
         let count = self.config.count;
-        let rate = self.config.rate;
+        let rate = self.config.rate_pub;
         let id = self.id.clone();
 
         let start = Instant::now();

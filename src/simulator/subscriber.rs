@@ -1,4 +1,8 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    thread,
+    time::{Duration, Instant},
+};
 
 use hdrhistogram::Histogram;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, Outgoing};
@@ -114,6 +118,7 @@ impl Subscriber {
             }
         }
 
+        let mut seq = 0;
         // for remainging publishes
         while publish_count < required_publish_count {
             let event = match self.eventloop.poll().await {
@@ -132,11 +137,17 @@ impl Subscriber {
 
             match event {
                 Event::Incoming(Incoming::Publish(_)) => {
+                    seq += 1;
                     publish_count += 1;
                     histogram
                         .record(last_publish.elapsed().as_millis() as u64)
                         .unwrap();
                     last_publish = Instant::now();
+                    // slow consumer every 100 messages
+                    if seq % 100 == 0 && self.config.sleep_sub != 0 {
+                        println!("sleeping {} seconds ...", self.config.sleep_sub);
+                        thread::sleep(Duration::from_secs(self.config.sleep_sub));
+                    }
                 }
                 Event::Incoming(Incoming::PingResp) | Event::Outgoing(_) => {}
                 incoming => error!(
