@@ -21,6 +21,26 @@ pub enum ConnectionError {
     Client(#[from] rumqttc::ClientError),
 }
 
+enum Stats {
+    PubStats(PubStats),
+    SubStats(SubStats),
+}
+
+#[derive(Default, Debug)]
+pub struct SubStats {
+    publish_count: u64,
+    puback_count: u64,
+    reconnects: u64,
+    throughput: f32,
+}
+
+#[derive(Default, Debug)]
+pub struct PubStats {
+    outgoing_publish: u64,
+    outgoing_throughput: f32,
+    reconnects: u64,
+}
+
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub(crate) async fn start(config: SimulatorConfig) {
     let config = Arc::new(config);
@@ -32,7 +52,7 @@ pub(crate) async fn start(config: SimulatorConfig) {
         let id = format!("sub-{:05}", i);
         let mut subscriber = subscriber::Subscriber::new(id, config).await.unwrap();
         handles.push(task::spawn(async move {
-            subscriber.start().await;
+            Stats::SubStats(subscriber.start().await)
         }));
     }
 
@@ -42,12 +62,34 @@ pub(crate) async fn start(config: SimulatorConfig) {
         let id = format!("pub-{:05}", i);
         let mut publisher = publisher::Publisher::new(id, config).await.unwrap();
         handles.push(task::spawn(async move {
-            publisher.start().await;
+            Stats::PubStats(publisher.start().await)
         }));
     }
 
-    // await and consume all futures
-    while handles.next().await.is_some() {}
+    let mut aggregate_substats = SubStats::default();
+    let mut aggregate_pubstats = PubStats::default();
+    loop {
+        // await and consume all futures
+        if let Some(some_stat) = handles.next().await {
+            match some_stat.unwrap() {
+                Stats::SubStats(substats) => {
+                    aggregate_substats.publish_count += substats.publish_count;
+                    aggregate_substats.puback_count += substats.puback_count;
+                    aggregate_substats.reconnects += substats.reconnects;
+                    aggregate_substats.throughput += substats.throughput;
+                }
+                Stats::PubStats(pubstats) => {
+                    aggregate_pubstats.outgoing_publish += pubstats.outgoing_publish;
+                    aggregate_pubstats.outgoing_throughput += pubstats.outgoing_throughput;
+                    aggregate_pubstats.reconnects += pubstats.reconnects;
+                }
+            }
+        } else {
+            break;
+        };
+    }
+
+    dbg!(&aggregate_pubstats, &aggregate_substats);
 }
 
 pub(crate) fn options(config: Arc<SimulatorConfig>, id: &str) -> io::Result<MqttOptions> {

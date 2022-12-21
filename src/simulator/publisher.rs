@@ -13,7 +13,7 @@ use tokio::{
     time::{self, Duration},
 };
 
-use crate::{bench::ConnectionError, SimulatorConfig};
+use crate::{bench::ConnectionError, simulator::PubStats, SimulatorConfig};
 
 #[derive(Debug, Serialize, Dummy)]
 struct Imu {
@@ -74,7 +74,7 @@ impl Publisher {
         })
     }
 
-    pub async fn start(&mut self) {
+    pub async fn start(&mut self) -> PubStats {
         let qos = get_qos(self.config.publish_qos);
         let inflight = self.config.max_inflight;
         let count = self.config.count;
@@ -107,7 +107,7 @@ impl Publisher {
             acks_expected = 1;
         }
 
-        let mut reconnects: i32 = 0;
+        let mut reconnects: u64 = 0;
         let mut latencies: Vec<Option<Instant>> = vec![None; inflight as usize + 1];
         let mut histogram = Histogram::<u64>::new(4).unwrap();
 
@@ -164,32 +164,38 @@ impl Publisher {
 
         let outgoing_throughput = (count * 1000) as f32 / outgoing_elapsed.as_millis() as f32;
 
-        println!(
-            "Id = {}
-            Throughputs
-            ----------------------------
-            Outgoing publishes : {:<7} Throughput = {} messages/s
-            Reconnects         : {}
+        // println!(
+        //     "Id = {}
+        //     Throughputs
+        //     ----------------------------
+        //     Outgoing publishes : {:<7} Throughput = {} messages/s
+        //     Reconnects         : {}
+        //
+        //     Latencies of {} samples
+        //     ----------------------------
+        //     100                 : {}
+        //     99.9999 percentile  : {}
+        //     99.999 percentile   : {}
+        //     90 percentile       : {}
+        //     50 percentile       : {}
+        //     ",
+        //     self.id,
+        //     acks_count,
+        //     outgoing_throughput,
+        //     reconnects,
+        //     histogram.len(),
+        //     histogram.value_at_percentile(100.0),
+        //     histogram.value_at_percentile(99.9999),
+        //     histogram.value_at_percentile(99.999),
+        //     histogram.value_at_percentile(90.0),
+        //     histogram.value_at_percentile(50.0),
+        // );
 
-            Latencies of {} samples
-            ----------------------------
-            100                 : {}
-            99.9999 percentile  : {}
-            99.999 percentile   : {}
-            90 percentile       : {}
-            50 percentile       : {}
-            ",
-            self.id,
-            acks_count,
+        PubStats {
+            outgoing_publish: acks_count as u64,
             outgoing_throughput,
             reconnects,
-            histogram.len(),
-            histogram.value_at_percentile(100.0),
-            histogram.value_at_percentile(99.9999),
-            histogram.value_at_percentile(99.999),
-            histogram.value_at_percentile(90.0),
-            histogram.value_at_percentile(50.0),
-        );
+        }
     }
 }
 
