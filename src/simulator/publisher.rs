@@ -193,7 +193,7 @@ impl Publisher {
 
         PubStats {
             outgoing_publish: acks_count as u64,
-            outgoing_throughput,
+            throughput: outgoing_throughput,
             reconnects,
         }
     }

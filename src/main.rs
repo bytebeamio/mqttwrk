@@ -12,6 +12,7 @@ extern crate log;
 extern crate colour;
 
 mod bench;
+mod common;
 mod conformance;
 mod round;
 mod simulator;

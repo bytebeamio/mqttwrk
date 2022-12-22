@@ -4,7 +4,10 @@ use futures::StreamExt;
 use rumqttc::{MqttOptions, QoS, Transport};
 use tokio::task;
 
-use crate::BenchConfig;
+use crate::{
+    common::{PubStats, Stats, SubStats},
+    BenchConfig,
+};
 
 mod publisher;
 mod subscriber;
@@ -19,26 +22,6 @@ pub enum ConnectionError {
     WrongPacket(rumqttc::Incoming),
     #[error("Client error = {0:?}")]
     Client(#[from] rumqttc::ClientError),
-}
-
-enum Stats {
-    PubStats(PubStats),
-    SubStats(SubStats),
-}
-
-#[derive(Default, Debug)]
-pub struct SubStats {
-    publish_count: u64,
-    puback_count: u64,
-    reconnects: u64,
-    throughput: f32,
-}
-
-#[derive(Default, Debug)]
-pub struct PubStats {
-    outgoing_publish: u64,
-    throughput: f32,
-    reconnects: u64,
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]

@@ -4,7 +4,10 @@ use futures::StreamExt;
 use rumqttc::{MqttOptions, QoS, Transport};
 use tokio::task;
 
-use crate::SimulatorConfig;
+use crate::{
+    common::{PubStats, Stats, SubStats},
+    SimulatorConfig,
+};
 
 mod publisher;
 mod subscriber;
@@ -19,26 +22,6 @@ pub enum ConnectionError {
     WrongPacket(rumqttc::Incoming),
     #[error("Client error = {0:?}")]
     Client(#[from] rumqttc::ClientError),
-}
-
-enum Stats {
-    PubStats(PubStats),
-    SubStats(SubStats),
-}
-
-#[derive(Default, Debug)]
-pub struct SubStats {
-    publish_count: u64,
-    puback_count: u64,
-    reconnects: u64,
-    throughput: f32,
-}
-
-#[derive(Default, Debug)]
-pub struct PubStats {
-    outgoing_publish: u64,
-    outgoing_throughput: f32,
-    reconnects: u64,
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
@@ -76,11 +59,12 @@ pub(crate) async fn start(config: SimulatorConfig) {
                     aggregate_substats.publish_count += substats.publish_count;
                     aggregate_substats.puback_count += substats.puback_count;
                     aggregate_substats.reconnects += substats.reconnects;
-                    aggregate_substats.throughput += substats.throughput;
+                    aggregate_substats.throughput +=
+                        substats.throughput / config.subscribers as f32;
                 }
                 Stats::PubStats(pubstats) => {
                     aggregate_pubstats.outgoing_publish += pubstats.outgoing_publish;
-                    aggregate_pubstats.outgoing_throughput += pubstats.outgoing_throughput;
+                    aggregate_pubstats.throughput += pubstats.throughput / config.publishers as f32;
                     aggregate_pubstats.reconnects += pubstats.reconnects;
                 }
             }
