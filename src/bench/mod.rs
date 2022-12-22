@@ -74,7 +74,10 @@ pub(crate) async fn start(config: BenchConfig) {
         };
     }
 
-    dbg!(&aggregate_pubstats, &aggregate_substats);
+    println!(
+        "Aggregate PubStats: {:#?}\nAggregate SubStats: {:#?}",
+        &aggregate_pubstats, &aggregate_substats
+    );
 }
 
 pub(crate) fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOptions> {

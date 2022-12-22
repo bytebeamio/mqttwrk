@@ -73,7 +73,10 @@ pub(crate) async fn start(config: SimulatorConfig) {
         };
     }
 
-    dbg!(&aggregate_pubstats, &aggregate_substats);
+    println!(
+        "Aggregate PubStats: {:?}\nAggregate SubStats: {:?}",
+        &aggregate_pubstats, &aggregate_substats
+    );
 }
 
 pub(crate) fn options(config: Arc<SimulatorConfig>, id: &str) -> io::Result<MqttOptions> {
