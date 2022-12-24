@@ -2,7 +2,7 @@ use std::{fs, io, sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use rumqttc::{MqttOptions, QoS, Transport};
-use tokio::task;
+use tokio::{sync::Barrier, task};
 
 use crate::{
     common::{PubStats, Stats, SubStats},
@@ -28,13 +28,17 @@ pub enum ConnectionError {
 pub(crate) async fn start(config: BenchConfig) {
     let config = Arc::new(config);
     let mut handles = futures::stream::FuturesUnordered::new();
+    let barrier_sub = Arc::new(Barrier::new(config.subscribers));
+    let barrier_pub = Arc::new(Barrier::new(config.publishers));
 
     // spawning subscribers
     for i in 0..config.subscribers {
         let config = Arc::clone(&config);
         let id = format!("sub-{:05}", i);
+        let barrier_handle = barrier_sub.clone();
         let mut subscriber = subscriber::Subscriber::new(id, config).await.unwrap();
         handles.push(task::spawn(async move {
+            barrier_handle.wait().await;
             Stats::SubStats(subscriber.start().await)
         }));
     }
@@ -43,15 +47,16 @@ pub(crate) async fn start(config: BenchConfig) {
     for i in 0..config.publishers {
         let config = Arc::clone(&config);
         let id = format!("pub-{:05}", i);
+        let barrier_handle = barrier_pub.clone();
         let mut publisher = publisher::Publisher::new(id, config).await.unwrap();
         handles.push(task::spawn(async move {
+            barrier_handle.wait().await;
             Stats::PubStats(publisher.start().await)
         }));
     }
 
     let mut aggregate_substats = SubStats::default();
     let mut aggregate_pubstats = PubStats::default();
-    let config = Arc::clone(&config);
     loop {
         // await and consume all futures
         if let Some(some_stat) = handles.next().await {
@@ -60,12 +65,11 @@ pub(crate) async fn start(config: BenchConfig) {
                     aggregate_substats.publish_count += substats.publish_count;
                     aggregate_substats.puback_count += substats.puback_count;
                     aggregate_substats.reconnects += substats.reconnects;
-                    aggregate_substats.throughput +=
-                        substats.throughput / config.subscribers as f32;
+                    aggregate_substats.throughput += substats.throughput;
                 }
                 Stats::PubStats(pubstats) => {
                     aggregate_pubstats.outgoing_publish += pubstats.outgoing_publish;
-                    aggregate_pubstats.throughput += pubstats.throughput / config.publishers as f32;
+                    aggregate_pubstats.throughput += pubstats.throughput;
                     aggregate_pubstats.reconnects += pubstats.reconnects;
                 }
             }
