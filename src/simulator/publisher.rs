@@ -242,6 +242,17 @@ async fn requests(topic: String, count: usize, client: AsyncClient, qos: QoS, de
 
         info!("published {}", i);
     }
+
+    if qos == QoS::AtMostOnce {
+        let fake_data = vec![dummy_imu(count as u32)];
+        let payload = serde_json::to_string(&fake_data).unwrap();
+        if let Err(_e) = client
+            .publish(topic.as_str(), QoS::AtLeastOnce, false, payload)
+            .await
+        {
+            // TODO
+        }
+    }
 }
 
 /// get QoS level. Default is AtLeastOnce.
