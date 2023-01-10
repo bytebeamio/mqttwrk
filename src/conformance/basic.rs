@@ -90,18 +90,19 @@ pub async fn session_test() {
     assert!(matches!(incoming, Incoming::ConnAck(ConnAck { .. })));
 
     client.disconnect().await.unwrap();
+    assert!(eventloop.poll().await.is_err());
 
-    let mut config = MqttOptions::new("conformance-session", "localhost", 1883);
-    config.set_keep_alive(Duration::from_secs(5));
-    config.set_clean_session(false);
+    let mut config2 = MqttOptions::new("conformance-session", "localhost", 1883);
+    config2.set_keep_alive(Duration::from_secs(5));
+    config2.set_clean_session(false);
 
-    let (client, mut eventloop) = common::get_client(config.clone());
+    let (client, mut eventloop) = common::get_client(config2.clone());
     let incoming = eventloop.poll().await.unwrap(); // connack
 
     assert_eq!(
         incoming,
         Packet::ConnAck(ConnAck {
-            session_present: false,
+            session_present: true,
             code: ConnectReturnCode::Success
         })
     );
@@ -117,7 +118,7 @@ pub async fn session_test() {
     assert_eq!(
         notification1,
         Packet::ConnAck(ConnAck {
-            session_present: true,
+            session_present: false,
             code: ConnectReturnCode::Success
         })
     );
