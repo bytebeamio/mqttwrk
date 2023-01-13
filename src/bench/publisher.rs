@@ -87,14 +87,12 @@ impl Publisher {
 
         if self.config.publish_qos == 0 {
             // only last extra publish is qos 1 for synchronization
-            acks_expected = 0;
+            acks_expected = 1;
         }
 
         let mut reconnects: u64 = 0;
         let mut latencies: Vec<Option<Instant>> = vec![None; inflight as usize + 1];
         let mut histogram = Histogram::<u64>::new(4).unwrap();
-
-        let mut outgoing_publish: u64 = 0;
 
         loop {
             let event = match self.eventloop.poll().await {
@@ -115,7 +113,6 @@ impl Publisher {
                 Event::Incoming(v) => match v {
                     Incoming::PubAck(ack) => {
                         acks_count += 1;
-
                         let elapsed = match latencies[ack.pkid as usize] {
                             Some(instant) => instant.elapsed(),
                             None => {
@@ -135,7 +132,6 @@ impl Publisher {
                 },
                 Event::Outgoing(Outgoing::Publish(pkid)) => {
                     latencies[pkid as usize] = Some(Instant::now());
-                    outgoing_publish += 1;
                 }
                 Event::Outgoing(Outgoing::PingReq) => {
                     debug!("ping request")
@@ -143,14 +139,13 @@ impl Publisher {
                 _ => (),
             }
 
-            if outgoing_publish >= self.config.count as u64 {
+            if acks_count >= acks_expected {
                 outgoing_elapsed = start.elapsed();
                 break;
             }
         }
 
         let outgoing_throughput = (count * 1000) as f32 / outgoing_elapsed.as_millis() as f32;
-        dbg!(&count, &outgoing_elapsed, &outgoing_throughput);
 
         // println!(
         //     "Id = {}
@@ -180,7 +175,7 @@ impl Publisher {
         // );
 
         PubStats {
-            outgoing_publish,
+            outgoing_publish: acks_count as u64,
             throughput: outgoing_throughput,
             reconnects,
         }
@@ -191,7 +186,7 @@ impl Publisher {
 async fn requests(
     topic: String,
     payload_size: usize,
-    count: usize,
+    mut count: usize,
     client: AsyncClient,
     qos: QoS,
     delay: u64,
@@ -200,6 +195,11 @@ async fn requests(
         0 => None,
         delay => Some(time::interval(time::Duration::from_millis(delay))),
     };
+
+    // For QoS requests we send an extra publish at last with QoS1 which is used for syncronization
+    if qos == QoS::AtMostOnce {
+        count = count - 1;
+    }
 
     for i in 0..count {
         let payload = vec![0; payload_size];
@@ -214,6 +214,16 @@ async fn requests(
         }
 
         info!("published {}", i);
+    }
+
+    if qos == QoS::AtMostOnce {
+        let payload = vec![0; payload_size];
+        if let Err(_e) = client
+            .publish(topic.as_str(), QoS::AtLeastOnce, false, payload)
+            .await
+        {
+            // TODO
+        }
     }
 }
 
