@@ -5,7 +5,7 @@ use std::{
 
 use hdrhistogram::Histogram;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, Outgoing};
-use tokio::time;
+use tokio::{sync::Barrier, time};
 
 use crate::{
     simulator::{get_qos, options, ConnectionError, SubStats},
@@ -26,6 +26,7 @@ impl Subscriber {
         config: Arc<SimulatorConfig>,
     ) -> Result<Subscriber, ConnectionError> {
         let (client, mut eventloop) = AsyncClient::new(options(config.clone(), &id)?, 10);
+        eventloop.network_options.set_connection_timeout(10);
 
         // waiting for connection
         loop {
@@ -65,7 +66,7 @@ impl Subscriber {
         })
     }
 
-    pub async fn start(&mut self) -> SubStats {
+    pub async fn start(&mut self, barrier_handle: Arc<Barrier>) -> SubStats {
         let required_publish_count = self.config.count * self.config.publishers;
         // total number of publishes received
         let mut publish_count = 0;
@@ -80,6 +81,7 @@ impl Subscriber {
         // number of reconnects attempted
         let mut reconnects = 0;
 
+        barrier_handle.wait().await;
         // for the very first publish, to record the starting time of publishes
         loop {
             let event = match self.eventloop.poll().await {

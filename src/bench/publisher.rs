@@ -3,7 +3,6 @@ use std::{fs, io, sync::Arc, time::Instant};
 use hdrhistogram::Histogram;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, QoS, Transport};
 use tokio::{
-    select,
     sync::Barrier,
     task,
     time::{self, Duration},
@@ -27,11 +26,13 @@ impl Publisher {
         config: Arc<BenchConfig>,
     ) -> Result<Publisher, ConnectionError> {
         let (client, mut eventloop) = AsyncClient::new(options(config.clone(), &id)?, 10);
+        eventloop.network_options.set_connection_timeout(10);
 
         loop {
             let event = match eventloop.poll().await {
                 Ok(v) => v,
-                Err(rumqttc::ConnectionError::Timeout(_)) => {
+                Err(rumqttc::ConnectionError::NetworkTimeout)
+                | Err(rumqttc::ConnectionError::FlushTimeout) => {
                     println!("{} reconnecting", id);
                     time::sleep(Duration::from_secs(1)).await;
                     continue;
@@ -42,7 +43,7 @@ impl Publisher {
             if let Event::Incoming(v) = event {
                 match v {
                     Incoming::ConnAck(_) => {
-                        // println!("{} connected", id);
+                        println!("{} connected", id);
                         break;
                     }
                     incoming => return Err(ConnectionError::WrongPacket(incoming)),
@@ -74,10 +75,13 @@ impl Publisher {
         let topic = format!("hello/{}/world", self.id);
         let client = self.client.clone();
 
+        let wait = barrier_handle.wait();
+        tokio::pin!(wait);
+
         // Keep sending pings until all publishers are spawned
         loop {
             tokio::select! {
-                _ = barrier_handle.wait() => {
+                _ = wait.as_mut() => {
                     break;
                 }
                 _ = self.eventloop.poll() => {
@@ -254,7 +258,6 @@ fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOptions> {
     let mut options = MqttOptions::new(id, &config.server, config.port);
     options.set_keep_alive(Duration::from_secs(config.keep_alive));
     options.set_inflight(config.max_inflight);
-    options.set_connection_timeout(config.conn_timeout);
 
     if let Some(ca_file) = &config.ca_file {
         let ca = fs::read(ca_file)?;

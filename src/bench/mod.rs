@@ -38,8 +38,7 @@ pub(crate) async fn start(config: BenchConfig) {
         let barrier_handle = barrier_sub.clone();
         let mut subscriber = subscriber::Subscriber::new(id, config).await.unwrap();
         handles.push(task::spawn(async move {
-            barrier_handle.wait().await;
-            Stats::SubStats(subscriber.start().await)
+            Stats::SubStats(subscriber.start(barrier_handle).await)
         }));
     }
 
@@ -87,7 +86,6 @@ pub(crate) fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOpti
     let mut options = MqttOptions::new(id, &config.server, config.port);
     options.set_keep_alive(Duration::from_secs(config.keep_alive));
     options.set_inflight(config.max_inflight);
-    options.set_connection_timeout(config.conn_timeout);
 
     if let Some(ca_file) = &config.ca_file {
         let ca = fs::read(ca_file)?;
