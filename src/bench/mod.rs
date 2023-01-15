@@ -50,8 +50,7 @@ pub(crate) async fn start(config: BenchConfig) {
         let barrier_handle = barrier_pub.clone();
         let mut publisher = publisher::Publisher::new(id, config).await.unwrap();
         handles.push(task::spawn(async move {
-            barrier_handle.wait().await;
-            Stats::PubStats(publisher.start().await)
+            Stats::PubStats(publisher.start(barrier_handle).await)
         }));
     }
 

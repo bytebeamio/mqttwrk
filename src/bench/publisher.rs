@@ -3,6 +3,8 @@ use std::{fs, io, sync::Arc, time::Instant};
 use hdrhistogram::Histogram;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, QoS, Transport};
 use tokio::{
+    select,
+    sync::Barrier,
     task,
     time::{self, Duration},
 };
@@ -40,7 +42,7 @@ impl Publisher {
             if let Event::Incoming(v) = event {
                 match v {
                     Incoming::ConnAck(_) => {
-                        println!("{} connected", id);
+                        // println!("{} connected", id);
                         break;
                     }
                     incoming => return Err(ConnectionError::WrongPacket(incoming)),
@@ -56,7 +58,7 @@ impl Publisher {
         })
     }
 
-    pub async fn start(&mut self) -> PubStats {
+    pub async fn start(&mut self, barrier_handle: Arc<Barrier>) -> PubStats {
         let qos = get_qos(self.config.publish_qos);
         let inflight = self.config.max_inflight;
         let payload_size = self.config.payload_size;
@@ -71,6 +73,17 @@ impl Publisher {
 
         let topic = format!("hello/{}/world", self.id);
         let client = self.client.clone();
+
+        // Keep sending pings until all publishers are spawned
+        loop {
+            tokio::select! {
+                _ = barrier_handle.wait() => {
+                    break;
+                }
+                _ = self.eventloop.poll() => {
+                }
+            };
+        }
 
         // If publish count is 0, don't publish. This is an idle connection
         // which can be used to test pings
