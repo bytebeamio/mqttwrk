@@ -14,6 +14,7 @@ pub async fn start() {
 pub async fn idle_connection() {
     println!("\n{}\n", "Running ping test".yellow().bold().underline());
     let (_client, mut eventloop) = AsyncClient::new(options("test-client", 5, 10), 10);
+    eventloop.network_options.set_connection_timeout(10);
     connect(&mut eventloop).await;
 
     for _i in 0..6 {
@@ -32,6 +33,7 @@ pub async fn idle_connection() {
 pub async fn publishes() {
     println!("\n{}\n", "Running publish test".yellow().bold().underline());
     let (client, mut eventloop) = AsyncClient::new(options("test-client", 5, 10), 10);
+    eventloop.network_options.set_connection_timeout(10);
     connect(&mut eventloop).await;
 
     task::spawn(async move {
@@ -75,6 +77,7 @@ pub async fn subscribe() {
         "Running subscribe test".yellow().bold().underline()
     );
     let (client1, mut eventloop1) = AsyncClient::new(options("test-client-1", 5, 10), 10);
+    eventloop1.network_options.set_connection_timeout(10);
     connect(&mut eventloop1).await;
 
     // Client 1 publish task
@@ -116,6 +119,7 @@ pub async fn subscribe() {
     });
 
     let (client2, mut eventloop2) = AsyncClient::new(options("test-client-2", 5, 10), 10);
+    eventloop2.network_options.set_connection_timeout(10);
     connect(&mut eventloop2).await;
     client2
         .subscribe("hello/+/world", QoS::AtLeastOnce)
@@ -167,7 +171,6 @@ fn options(id: &str, keep_alive: u64, max_inflight: u16) -> MqttOptions {
     let mut options = MqttOptions::new(id, "localhost", 1883);
     options.set_keep_alive(Duration::from_secs(keep_alive));
     options.set_inflight(max_inflight);
-    options.set_connection_timeout(10);
     options.set_clean_session(false);
     options
 }

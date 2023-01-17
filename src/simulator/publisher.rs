@@ -1,21 +1,39 @@
-use std::{fs, io, sync::Arc, time::Instant};
+use std::{
+    fs, io,
+    sync::Arc,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
 
+use fake::{Dummy, Fake, Faker};
 use hdrhistogram::Histogram;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, QoS, Transport};
+use serde::Serialize;
 use tokio::{
     sync::Barrier,
     task,
     time::{self, Duration},
 };
 
-use crate::{
-    bench::{ConnectionError, PubStats},
-    BenchConfig,
-};
+use crate::{bench::ConnectionError, simulator::PubStats, SimulatorConfig};
+
+#[derive(Debug, Serialize, Dummy)]
+struct Imu {
+    sequence: u32,
+    timestamp: u64,
+    ax: f64,
+    ay: f64,
+    az: f64,
+    pitch: f64,
+    roll: f64,
+    yaw: f64,
+    magx: f64,
+    magy: f64,
+    magz: f64,
+}
 
 pub struct Publisher {
     id: String,
-    config: Arc<BenchConfig>,
+    config: Arc<SimulatorConfig>,
     client: AsyncClient,
     eventloop: EventLoop,
 }
@@ -23,7 +41,7 @@ pub struct Publisher {
 impl Publisher {
     pub(crate) async fn new(
         id: String,
-        config: Arc<BenchConfig>,
+        config: Arc<SimulatorConfig>,
     ) -> Result<Publisher, ConnectionError> {
         let (client, mut eventloop) = AsyncClient::new(options(config.clone(), &id)?, 10);
         eventloop.network_options.set_connection_timeout(10);
@@ -62,9 +80,8 @@ impl Publisher {
     pub async fn start(&mut self, barrier_handle: Arc<Barrier>) -> PubStats {
         let qos = get_qos(self.config.publish_qos);
         let inflight = self.config.max_inflight;
-        let payload_size = self.config.payload_size;
         let count = self.config.count;
-        let rate = self.config.rate;
+        let rate = self.config.rate_pub;
         let id = self.id.clone();
 
         let start = Instant::now();
@@ -72,7 +89,7 @@ impl Publisher {
         let mut outgoing_elapsed = Duration::from_secs(0);
         let mut acks_count = 0;
 
-        let topic = format!("hello/{}/world", self.id);
+        let topic = self.config.topic_format.replace("{}", &self.id);
         let client = self.client.clone();
 
         let wait = barrier_handle.wait();
@@ -95,7 +112,7 @@ impl Publisher {
             // delay between messages in milliseconds
             let delay = if rate == 0 { 0 } else { 1000 / rate };
             task::spawn(async move {
-                requests(topic, payload_size, count, client, qos, delay).await;
+                requests(topic, count, client, qos, delay).await;
             });
         } else {
             // Just keep this connection alive
@@ -206,27 +223,37 @@ impl Publisher {
     }
 }
 
+fn dummy_imu(sequence: u32) -> Imu {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    Imu {
+        sequence,
+        timestamp,
+        ax: Faker.fake::<f64>(),
+        ay: Faker.fake::<f64>(),
+        az: Faker.fake::<f64>(),
+        pitch: Faker.fake::<f64>(),
+        roll: Faker.fake::<f64>(),
+        yaw: Faker.fake::<f64>(),
+        magx: Faker.fake::<f64>(),
+        magy: Faker.fake::<f64>(),
+        magz: Faker.fake::<f64>(),
+    }
+}
+
 /// make count number of requests at specified QoS.
-async fn requests(
-    topic: String,
-    payload_size: usize,
-    mut count: usize,
-    client: AsyncClient,
-    qos: QoS,
-    delay: u64,
-) {
+async fn requests(topic: String, count: usize, client: AsyncClient, qos: QoS, delay: u64) {
     let mut interval = match delay {
         0 => None,
         delay => Some(time::interval(time::Duration::from_millis(delay))),
     };
 
-    // For QoS requests we send an extra publish at last with QoS1 which is used for syncronization
-    if qos == QoS::AtMostOnce {
-        count = count - 1;
-    }
-
     for i in 0..count {
-        let payload = vec![0; payload_size];
+        let fake_data = vec![dummy_imu(i as u32)];
+        let payload = serde_json::to_string(&fake_data).unwrap();
         if let Some(interval) = &mut interval {
             interval.tick().await;
         }
@@ -241,7 +268,8 @@ async fn requests(
     }
 
     if qos == QoS::AtMostOnce {
-        let payload = vec![0; payload_size];
+        let fake_data = vec![dummy_imu(count as u32)];
+        let payload = serde_json::to_string(&fake_data).unwrap();
         if let Err(_e) = client
             .publish(topic.as_str(), QoS::AtLeastOnce, false, payload)
             .await
@@ -261,7 +289,7 @@ fn get_qos(qos: i16) -> QoS {
     }
 }
 
-fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOptions> {
+fn options(config: Arc<SimulatorConfig>, id: &str) -> io::Result<MqttOptions> {
     let mut options = MqttOptions::new(id, &config.server, config.port);
     options.set_keep_alive(Duration::from_secs(config.keep_alive));
     options.set_inflight(config.max_inflight);

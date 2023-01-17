@@ -6,7 +6,7 @@ use tokio::{sync::Barrier, task};
 
 use crate::{
     common::{PubStats, Stats, SubStats},
-    BenchConfig,
+    SimulatorConfig,
 };
 
 mod publisher;
@@ -25,7 +25,7 @@ pub enum ConnectionError {
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
-pub(crate) async fn start(config: BenchConfig) {
+pub(crate) async fn start(config: SimulatorConfig) {
     let config = Arc::new(config);
     let mut handles = futures::stream::FuturesUnordered::new();
     let barrier_sub = Arc::new(Barrier::new(config.subscribers));
@@ -82,7 +82,7 @@ pub(crate) async fn start(config: BenchConfig) {
     );
 }
 
-pub(crate) fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOptions> {
+pub(crate) fn options(config: Arc<SimulatorConfig>, id: &str) -> io::Result<MqttOptions> {
     let mut options = MqttOptions::new(id, &config.server, config.port);
     options.set_keep_alive(Duration::from_secs(config.keep_alive));
     options.set_inflight(config.max_inflight);

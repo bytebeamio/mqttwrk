@@ -1,17 +1,20 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use hdrhistogram::Histogram;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, Outgoing};
-use tokio::sync::Barrier;
+use tokio::{sync::Barrier, time};
 
 use crate::{
-    bench::{get_qos, options, ConnectionError, SubStats},
-    BenchConfig,
+    simulator::{get_qos, options, ConnectionError, SubStats},
+    SimulatorConfig,
 };
 
 pub struct Subscriber {
     id: String,
-    config: Arc<BenchConfig>,
+    config: Arc<SimulatorConfig>,
     #[allow(dead_code)]
     client: AsyncClient,
     eventloop: EventLoop,
@@ -20,7 +23,7 @@ pub struct Subscriber {
 impl Subscriber {
     pub(crate) async fn new(
         id: String,
-        config: Arc<BenchConfig>,
+        config: Arc<SimulatorConfig>,
     ) -> Result<Subscriber, ConnectionError> {
         let (client, mut eventloop) = AsyncClient::new(options(config.clone(), &id)?, 10);
         eventloop.network_options.set_connection_timeout(10);
@@ -38,7 +41,10 @@ impl Subscriber {
 
         // subscribing
         client
-            .subscribe("hello/+/world", get_qos(config.subscribe_qos))
+            .subscribe(
+                config.topic_format.replace("{}", &"+"),
+                get_qos(config.subscribe_qos),
+            )
             .await?;
 
         // waiting for subscription confirmation
@@ -60,7 +66,7 @@ impl Subscriber {
         })
     }
 
-    pub(crate) async fn start(&mut self, barrier_handle: Arc<Barrier>) -> SubStats {
+    pub async fn start(&mut self, barrier_handle: Arc<Barrier>) -> SubStats {
         let required_publish_count = self.config.count * self.config.publishers;
         // total number of publishes received
         let mut publish_count = 0;
@@ -114,6 +120,7 @@ impl Subscriber {
             }
         }
 
+        let mut seq = 0;
         // for remainging publishes
         while publish_count < required_publish_count {
             let event = match self.eventloop.poll().await {
@@ -132,11 +139,17 @@ impl Subscriber {
 
             match event {
                 Event::Incoming(Incoming::Publish(_)) => {
+                    seq += 1;
                     publish_count += 1;
                     histogram
                         .record(last_publish.elapsed().as_millis() as u64)
                         .unwrap();
                     last_publish = Instant::now();
+                    // slow consumer every 100 messages
+                    if seq % 100 == 0 && self.config.sleep_sub != 0 {
+                        println!("sleeping {} seconds ...", self.config.sleep_sub);
+                        time::sleep(Duration::from_secs(self.config.sleep_sub)).await;
+                    }
                 }
                 Event::Incoming(Incoming::PingResp) | Event::Outgoing(_) => {}
                 incoming => error!(

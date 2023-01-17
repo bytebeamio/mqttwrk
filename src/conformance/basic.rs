@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::conformance::common::{self, WrappedEventLoop};
+use crate::common::{self, WrappedEventLoop};
 use colored::Colorize;
 use rumqttc::{
     matches, AsyncClient, ConnAck, ConnectReturnCode, Event, Incoming, LastWill, MqttOptions,
