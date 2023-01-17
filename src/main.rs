@@ -75,6 +75,12 @@ struct BenchConfig {
     /// Message rate per second. (0 means no throttle)
     #[arg(short = 'r', long, default_value = "0")]
     rate: u64,
+    /// Show publisher stats
+    #[arg(long, default_value = "false")]
+    show_pub_stat: bool,
+    /// Show subscriber stats
+    #[arg(long, default_value = "false")]
+    show_sub_stat: bool,
 }
 
 #[derive(Clone, Debug, Parser)]
@@ -140,6 +146,12 @@ struct SimulatorConfig {
     rate_pub: u64,
     #[arg(long, default_value = "0")]
     sleep_sub: u64,
+    /// Show publisher stats
+    #[arg(long, default_value = "false")]
+    show_pub_stat: bool,
+    /// Show subscriber stats
+    #[arg(long, default_value = "false")]
+    show_sub_stat: bool,
 }
 
 fn main() {

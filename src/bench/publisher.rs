@@ -164,32 +164,39 @@ impl Publisher {
 
         let outgoing_throughput = (count * 1000) as f32 / outgoing_elapsed.as_millis() as f32;
 
-        // println!(
-        //     "Id = {}
-        //     Throughputs
-        //     ----------------------------
-        //     Outgoing publishes : {:<7} Throughput = {} messages/s
-        //     Reconnects         : {}
-        //
-        //     Latencies of {} samples
-        //     ----------------------------
-        //     100                 : {}
-        //     99.9999 percentile  : {}
-        //     99.999 percentile   : {}
-        //     90 percentile       : {}
-        //     50 percentile       : {}
-        //     ",
-        //     self.id,
-        //     acks_count,
-        //     outgoing_throughput,
-        //     reconnects,
-        //     histogram.len(),
-        //     histogram.value_at_percentile(100.0),
-        //     histogram.value_at_percentile(99.9999),
-        //     histogram.value_at_percentile(99.999),
-        //     histogram.value_at_percentile(90.0),
-        //     histogram.value_at_percentile(50.0),
-        // );
+        if self.config.show_pub_stat {
+            println!(
+                "Id = {}
+            Throughputs
+            ----------------------------
+            Outgoing publishes : {:<7} Throughput = {} messages/s
+            Reconnects         : {}
+
+            Latencies of {} samples
+            ----------------------------
+            100                 : {}
+            99.9999 percentile  : {}
+            99.999 percentile   : {}
+            90 percentile       : {}
+            50 percentile       : {}
+            ",
+                self.id,
+                acks_count,
+                outgoing_throughput,
+                reconnects,
+                histogram.len(),
+                histogram.value_at_percentile(100.0),
+                histogram.value_at_percentile(99.9999),
+                histogram.value_at_percentile(99.999),
+                histogram.value_at_percentile(90.0),
+                histogram.value_at_percentile(50.0),
+            );
+        }
+
+        // if publish_qos is 0 assume we send all publishes
+        if self.config.publish_qos == 0 {
+            acks_count = self.config.count;
+        }
 
         PubStats {
             outgoing_publish: acks_count as u64,
