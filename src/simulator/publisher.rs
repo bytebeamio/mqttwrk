@@ -31,6 +31,62 @@ struct Imu {
     magz: f64,
 }
 
+#[derive(Debug, Serialize, Dummy)]
+pub struct Location {
+    latitude: f64,
+    longitude: f64,
+}
+
+#[derive(Debug, Serialize, Dummy)]
+struct Bms {
+    // #[dummy(faker = "250")]
+    periodicity_ms: i32,
+    // #[dummy(faker = "40.0 .. 45.0")]
+    mosfet_temperature: f64,
+    // #[dummy(faker = "35.0 .. 40.0")]
+    ambient_temperature: f64,
+    // #[dummy(faker = "1")]
+    mosfet_status: i32,
+    // #[dummy(faker = "1")]
+    cell_voltage_count: i32,
+    cell_voltage_1: f64,
+    cell_voltage_2: f64,
+    cell_voltage_3: f64,
+    cell_voltage_4: f64,
+    cell_voltage_5: f64,
+    cell_voltage_6: f64,
+    cell_voltage_7: f64,
+    cell_voltage_8: f64,
+    cell_voltage_9: f64,
+    cell_voltage_10: f64,
+    cell_voltage_11: f64,
+    cell_voltage_12: f64,
+    cell_voltage_13: f64,
+    cell_voltage_14: f64,
+    cell_voltage_15: f64,
+    cell_voltage_16: f64,
+    cell_thermistor_count: i32,
+    cell_temp_1: f64,
+    cell_temp_2: f64,
+    cell_temp_3: f64,
+    cell_temp_4: f64,
+    cell_temp_5: f64,
+    cell_temp_6: f64,
+    cell_temp_7: f64,
+    cell_temp_8: f64,
+    cell_balancing_status: i32,
+    pack_voltage: f64,
+    pack_current: f64,
+    pack_soc: f64,
+    pack_soh: f64,
+    pack_sop: f64,
+    pack_cycle_count: i64,
+    pack_available_energy: i64,
+    pack_consumed_energy: i64,
+    pack_fault: i32,
+    pack_status: i32,
+}
+
 pub struct Publisher {
     id: String,
     config: Arc<SimulatorConfig>,
@@ -105,6 +161,7 @@ impl Publisher {
                 }
             };
         }
+        let data_type = self.config.data_type.to_lowercase();
 
         // If publish count is 0, don't publish. This is an idle connection
         // which can be used to test pings
@@ -112,7 +169,7 @@ impl Publisher {
             // delay between messages in milliseconds
             let delay = if rate == 0 { 0 } else { 1000 / rate };
             task::spawn(async move {
-                requests(topic, count, client, qos, delay).await;
+                requests(topic, count, client, qos, delay, data_type).await;
             });
         } else {
             // Just keep this connection alive
@@ -223,6 +280,24 @@ impl Publisher {
     }
 }
 
+fn generate_data(sequence: usize, data_type: &str) -> String {
+    let payload: String;
+    if data_type == "imu" {
+        let fake_data = vec![dummy_imu(sequence as u32)];
+        payload = serde_json::to_string(&fake_data).unwrap();
+    } else if data_type == "bms" {
+        let fake_data = vec![dummy_bms()];
+        payload = serde_json::to_string(&fake_data).unwrap();
+    } else if data_type == "gps" {
+        let fake_data = vec![dummy_gps()];
+        payload = serde_json::to_string(&fake_data).unwrap();
+    } else {
+        panic!("wrong data_type");
+    }
+
+    payload
+}
+
 fn dummy_imu(sequence: u32) -> Imu {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -244,16 +319,30 @@ fn dummy_imu(sequence: u32) -> Imu {
     }
 }
 
+fn dummy_bms() -> Bms {
+    Faker.fake::<Bms>()
+}
+
+fn dummy_gps() -> Location {
+    Faker.fake::<Location>()
+}
+
 /// make count number of requests at specified QoS.
-async fn requests(topic: String, count: usize, client: AsyncClient, qos: QoS, delay: u64) {
+async fn requests(
+    topic: String,
+    count: usize,
+    client: AsyncClient,
+    qos: QoS,
+    delay: u64,
+    data_type: String,
+) {
     let mut interval = match delay {
         0 => None,
         delay => Some(time::interval(time::Duration::from_millis(delay))),
     };
 
     for i in 0..count {
-        let fake_data = vec![dummy_imu(i as u32)];
-        let payload = serde_json::to_string(&fake_data).unwrap();
+        let payload = generate_data(i, &data_type);
         if let Some(interval) = &mut interval {
             interval.tick().await;
         }
@@ -268,8 +357,7 @@ async fn requests(topic: String, count: usize, client: AsyncClient, qos: QoS, de
     }
 
     if qos == QoS::AtMostOnce {
-        let fake_data = vec![dummy_imu(count as u32)];
-        let payload = serde_json::to_string(&fake_data).unwrap();
+        let payload = generate_data(count, &data_type);
         if let Err(_e) = client
             .publish(topic.as_str(), QoS::AtLeastOnce, false, payload)
             .await

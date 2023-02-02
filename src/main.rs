@@ -152,6 +152,9 @@ struct SimulatorConfig {
     /// Show subscriber stats
     #[arg(long, default_value = "false")]
     show_sub_stat: bool,
+    /// Type of data to send
+    #[arg(long, default_value = "Imu")]
+    data_type: String,
 }
 
 fn main() {
