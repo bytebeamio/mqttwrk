@@ -105,7 +105,7 @@ struct RoundConfig {
 #[derive(Debug, Parser)]
 struct SimulatorConfig {
     /// default topic format to which data is published to. `{}` is replaced by publisher_id
-    #[arg(long, default_value = "/tenants/demo/devices/{}/events/imu/jsonarray")]
+    #[arg(long, default_value = "/tenants/demo/devices/{}/events/{}/jsonarray")]
     topic_format: String,
     /// number of messages (n = 0 is for idle connection to test pings)
     #[arg(short = 'n', long, default_value = "100")]
@@ -153,7 +153,7 @@ struct SimulatorConfig {
     #[arg(long, default_value = "false")]
     show_sub_stat: bool,
     /// Type of data to send
-    #[arg(long, default_value = "Imu")]
+    #[arg(long, default_value = "imu")]
     data_type: String,
 }
 

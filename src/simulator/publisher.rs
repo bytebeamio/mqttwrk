@@ -33,12 +33,16 @@ struct Imu {
 
 #[derive(Debug, Serialize, Dummy)]
 pub struct Location {
+    sequence: u32,
+    timestamp: u64,
     latitude: f64,
     longitude: f64,
 }
 
 #[derive(Debug, Serialize, Dummy)]
 struct Bms {
+    sequence: u32,
+    timestamp: u64,
     // #[dummy(faker = "250")]
     periodicity_ms: i32,
     // #[dummy(faker = "40.0 .. 45.0")]
@@ -144,8 +148,10 @@ impl Publisher {
         let mut acks_expected = count;
         let mut outgoing_elapsed = Duration::from_secs(0);
         let mut acks_count = 0;
+        let data_type = self.config.data_type.to_lowercase();
 
-        let topic = self.config.topic_format.replace("{}", &self.id);
+        let topic = self.config.topic_format.replacen("{}", &self.id, 1);
+        let topic = topic.replacen("{}", &data_type, 1);
         let client = self.client.clone();
 
         let wait = barrier_handle.wait();
@@ -161,7 +167,6 @@ impl Publisher {
                 }
             };
         }
-        let data_type = self.config.data_type.to_lowercase();
 
         // If publish count is 0, don't publish. This is an idle connection
         // which can be used to test pings
@@ -286,10 +291,10 @@ fn generate_data(sequence: usize, data_type: &str) -> String {
         let fake_data = vec![dummy_imu(sequence as u32)];
         payload = serde_json::to_string(&fake_data).unwrap();
     } else if data_type == "bms" {
-        let fake_data = vec![dummy_bms()];
+        let fake_data = vec![dummy_bms(sequence as u32)];
         payload = serde_json::to_string(&fake_data).unwrap();
     } else if data_type == "gps" {
-        let fake_data = vec![dummy_gps()];
+        let fake_data = vec![dummy_gps(sequence as u32)];
         payload = serde_json::to_string(&fake_data).unwrap();
     } else {
         panic!("wrong data_type");
@@ -307,24 +312,33 @@ fn dummy_imu(sequence: u32) -> Imu {
     Imu {
         sequence,
         timestamp,
-        ax: Faker.fake::<f64>(),
-        ay: Faker.fake::<f64>(),
-        az: Faker.fake::<f64>(),
-        pitch: Faker.fake::<f64>(),
-        roll: Faker.fake::<f64>(),
-        yaw: Faker.fake::<f64>(),
-        magx: Faker.fake::<f64>(),
-        magy: Faker.fake::<f64>(),
-        magz: Faker.fake::<f64>(),
+        ..Faker.fake()
     }
 }
 
-fn dummy_bms() -> Bms {
-    Faker.fake::<Bms>()
+fn dummy_bms(sequence: u32) -> Bms {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    Bms {
+        sequence,
+        timestamp,
+        ..Faker.fake()
+    }
 }
 
-fn dummy_gps() -> Location {
-    Faker.fake::<Location>()
+fn dummy_gps(sequence: u32) -> Location {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    Location {
+        sequence,
+        timestamp,
+        ..Faker.fake()
+    }
 }
 
 /// make count number of requests at specified QoS.
