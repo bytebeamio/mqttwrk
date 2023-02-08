@@ -40,7 +40,7 @@ impl Subscriber {
         }
 
         let topic = config.topic_format.replacen("{pub_id}", "+", 1);
-        let topic = topic.replacen("{data_type}", "+", 1);
+        let topic = topic.replacen("{data_type}", &config.data_type.to_string(), 1);
 
         // subscribing
         client

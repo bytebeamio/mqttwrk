@@ -14,7 +14,7 @@ use tokio::{
     time::{self, Duration},
 };
 
-use crate::{bench::ConnectionError, simulator::PubStats, SimulatorConfig};
+use crate::{bench::ConnectionError, simulator::PubStats, DataType, SimulatorConfig};
 
 #[derive(Debug, Serialize, Dummy)]
 struct Imu {
@@ -41,7 +41,7 @@ struct Imu {
 }
 
 #[derive(Debug, Serialize, Dummy)]
-pub struct Location {
+pub struct Gps {
     sequence: u32,
     timestamp: u64,
     latitude: f64,
@@ -193,10 +193,11 @@ impl Publisher {
         let mut acks_expected = count;
         let mut outgoing_elapsed = Duration::from_secs(0);
         let mut acks_count = 0;
-        let data_type = self.config.data_type.to_lowercase();
+        let data_type = self.config.data_type;
+        let data_type_str = self.config.data_type.to_string();
 
         let topic = self.config.topic_format.replacen("{pub_id}", &self.id, 1);
-        let topic = topic.replacen("{data_type}", &data_type, 1);
+        let topic = topic.replacen("{data_type}", &data_type_str, 1);
         let client = self.client.clone();
 
         let wait = barrier_handle.wait();
@@ -330,19 +331,21 @@ impl Publisher {
     }
 }
 
-fn generate_data(sequence: usize, data_type: &str) -> String {
+fn generate_data(sequence: usize, data_type: DataType) -> String {
     let payload: String;
-    if data_type == "imu" {
-        let fake_data = vec![dummy_imu(sequence as u32)];
-        payload = serde_json::to_string(&fake_data).unwrap();
-    } else if data_type == "bms" {
-        let fake_data = vec![dummy_bms(sequence as u32)];
-        payload = serde_json::to_string(&fake_data).unwrap();
-    } else if data_type == "gps" {
-        let fake_data = vec![dummy_gps(sequence as u32)];
-        payload = serde_json::to_string(&fake_data).unwrap();
-    } else {
-        panic!("wrong data_type");
+    match data_type {
+        DataType::Gps => {
+            let fake_data = vec![dummy_gps(sequence as u32)];
+            payload = serde_json::to_string(&fake_data).unwrap();
+        }
+        DataType::Imu => {
+            let fake_data = vec![dummy_imu(sequence as u32)];
+            payload = serde_json::to_string(&fake_data).unwrap();
+        }
+        DataType::Bms => {
+            let fake_data = vec![dummy_bms(sequence as u32)];
+            payload = serde_json::to_string(&fake_data).unwrap();
+        }
     }
 
     payload
@@ -373,13 +376,13 @@ fn dummy_bms(sequence: u32) -> Bms {
     }
 }
 
-fn dummy_gps(sequence: u32) -> Location {
+fn dummy_gps(sequence: u32) -> Gps {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64;
 
-    Location {
+    Gps {
         sequence,
         timestamp,
         ..Faker.fake()
@@ -393,7 +396,7 @@ async fn requests(
     client: AsyncClient,
     qos: QoS,
     delay: u64,
-    data_type: String,
+    data_type: DataType,
 ) {
     let mut interval = match delay {
         0 => None,
@@ -401,7 +404,7 @@ async fn requests(
     };
 
     for i in 0..count {
-        let payload = generate_data(i, &data_type);
+        let payload = generate_data(i, data_type);
         if let Some(interval) = &mut interval {
             interval.tick().await;
         }
@@ -416,7 +419,7 @@ async fn requests(
     }
 
     if qos == QoS::AtMostOnce {
-        let payload = generate_data(count, &data_type);
+        let payload = generate_data(count, data_type);
         if let Err(_e) = client
             .publish(topic.as_str(), QoS::AtLeastOnce, false, payload)
             .await

@@ -6,7 +6,9 @@
 //! - Spawn n clients with publish and subscribe on the same topic (and report thoughput and latencies)
 //! - Spawn n clinets with publishes and 1 subscription to pull all the data (used to simulate a sink in the cloud)
 
-use clap::Parser;
+use std::fmt::Display;
+
+use clap::{Parser, ValueEnum};
 
 #[macro_use]
 extern crate log;
@@ -128,10 +130,10 @@ struct SimulatorConfig {
     /// number of subscribers
     #[arg(short = 's', default_value = "0")]
     subscribers: usize,
-    /// qos, default 0
+    /// qos, default 1
     #[arg(short = 'x', default_value = "1")]
     publish_qos: i16,
-    /// qos, default 0
+    /// qos, default 1
     #[arg(short = 'y', default_value = "1")]
     subscribe_qos: i16,
     /// size of payload
@@ -159,8 +161,25 @@ struct SimulatorConfig {
     #[arg(long, default_value = "false")]
     show_sub_stat: bool,
     /// Type of data to send
-    #[arg(long, default_value = "imu")]
-    data_type: String,
+    #[arg(long, value_enum)]
+    data_type: DataType,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+pub enum DataType {
+    Imu,
+    Bms,
+    Gps,
+}
+
+impl Display for DataType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Imu => f.write_str("imu"),
+            Self::Bms => f.write_str("bms"),
+            Self::Gps => f.write_str("gps"),
+        }
+    }
 }
 
 fn main() {
