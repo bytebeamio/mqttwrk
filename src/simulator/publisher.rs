@@ -195,8 +195,8 @@ impl Publisher {
         let mut acks_count = 0;
         let data_type = self.config.data_type.to_lowercase();
 
-        let topic = self.config.topic_format.replacen("{}", &self.id, 1);
-        let topic = topic.replacen("{}", &data_type, 1);
+        let topic = self.config.topic_format.replacen("{pub_id}", &self.id, 1);
+        let topic = topic.replacen("{data_type}", &data_type, 1);
         let client = self.client.clone();
 
         let wait = barrier_handle.wait();

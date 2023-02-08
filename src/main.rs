@@ -104,8 +104,14 @@ struct RoundConfig {
 
 #[derive(Debug, Parser)]
 struct SimulatorConfig {
-    /// default topic format to which data is published to. `{}` is replaced by publisher_id
-    #[arg(long, default_value = "/tenants/demo/devices/{}/events/{}/jsonarray")]
+    /// default topic format to which data is published to.
+    /// if present:
+    ///     `{pub_id}` is replaced by publisher_id
+    ///     `{data_type}` is replace by type of data being published
+    #[arg(
+        long,
+        default_value = "/tenants/demo/devices/{pub_id}/events/{data_type}/jsonarray"
+    )]
     topic_format: String,
     /// number of messages (n = 0 is for idle connection to test pings)
     #[arg(short = 'n', long, default_value = "100")]
