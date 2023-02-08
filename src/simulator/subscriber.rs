@@ -39,12 +39,12 @@ impl Subscriber {
             }
         }
 
+        let topic = config.topic_format.replacen("{pub_id}", "+", 1);
+        let topic = topic.replacen("{data_type}", &config.data_type.to_string(), 1);
+
         // subscribing
         client
-            .subscribe(
-                config.topic_format.replace("{}", &"+"),
-                get_qos(config.subscribe_qos),
-            )
+            .subscribe(topic, get_qos(config.subscribe_qos))
             .await?;
 
         // waiting for subscription confirmation

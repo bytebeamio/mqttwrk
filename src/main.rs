@@ -6,7 +6,9 @@
 //! - Spawn n clients with publish and subscribe on the same topic (and report thoughput and latencies)
 //! - Spawn n clinets with publishes and 1 subscription to pull all the data (used to simulate a sink in the cloud)
 
-use clap::Parser;
+use std::fmt::Display;
+
+use clap::{Parser, ValueEnum};
 
 #[macro_use]
 extern crate log;
@@ -104,8 +106,14 @@ struct RoundConfig {
 
 #[derive(Debug, Parser)]
 struct SimulatorConfig {
-    /// default topic format to which data is published to. `{}` is replaced by publisher_id
-    #[arg(long, default_value = "/tenants/demo/devices/{}/events/imu/jsonarray")]
+    /// default topic format to which data is published to.
+    /// if present:
+    ///     `{pub_id}` is replaced by publisher_id
+    ///     `{data_type}` is replace by type of data being published
+    #[arg(
+        long,
+        default_value = "/tenants/demo/devices/{pub_id}/events/{data_type}/jsonarray"
+    )]
     topic_format: String,
     /// number of messages (n = 0 is for idle connection to test pings)
     #[arg(short = 'n', long, default_value = "100")]
@@ -122,10 +130,10 @@ struct SimulatorConfig {
     /// number of subscribers
     #[arg(short = 's', default_value = "0")]
     subscribers: usize,
-    /// qos, default 0
+    /// qos, default 1
     #[arg(short = 'x', default_value = "1")]
     publish_qos: i16,
-    /// qos, default 0
+    /// qos, default 1
     #[arg(short = 'y', default_value = "1")]
     subscribe_qos: i16,
     /// size of payload
@@ -152,6 +160,26 @@ struct SimulatorConfig {
     /// Show subscriber stats
     #[arg(long, default_value = "false")]
     show_sub_stat: bool,
+    /// Type of data to send
+    #[arg(long, value_enum)]
+    data_type: DataType,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+pub enum DataType {
+    Imu,
+    Bms,
+    Gps,
+}
+
+impl Display for DataType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Imu => f.write_str("imu"),
+            Self::Bms => f.write_str("bms"),
+            Self::Gps => f.write_str("gps"),
+        }
+    }
 }
 
 fn main() {

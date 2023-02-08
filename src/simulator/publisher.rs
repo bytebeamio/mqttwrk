@@ -14,21 +14,126 @@ use tokio::{
     time::{self, Duration},
 };
 
-use crate::{bench::ConnectionError, simulator::PubStats, SimulatorConfig};
+use crate::{bench::ConnectionError, simulator::PubStats, DataType, SimulatorConfig};
 
 #[derive(Debug, Serialize, Dummy)]
 struct Imu {
     sequence: u32,
     timestamp: u64,
+    #[dummy(faker = "1.0 .. 2.8")]
     ax: f64,
+    #[dummy(faker = "1.0 .. 2.8")]
     ay: f64,
+    #[dummy(faker = "9.79 .. 9.82")]
     az: f64,
+    #[dummy(faker = "0.8 .. 1.0")]
     pitch: f64,
+    #[dummy(faker = "0.8 .. 1.0")]
     roll: f64,
+    #[dummy(faker = "0.8 .. 1.0")]
     yaw: f64,
+    #[dummy(faker = "-45.0 .. -15.0")]
     magx: f64,
+    #[dummy(faker = "-45.0 .. -15.0")]
     magy: f64,
+    #[dummy(faker = "-45.0 .. -15.0")]
     magz: f64,
+}
+
+#[derive(Debug, Serialize, Dummy)]
+pub struct Gps {
+    sequence: u32,
+    timestamp: u64,
+    latitude: f64,
+    longitude: f64,
+}
+
+#[derive(Debug, Serialize, Dummy)]
+struct Bms {
+    sequence: u32,
+    timestamp: u64,
+    #[dummy(faker = "250")]
+    periodicity_ms: i32,
+    #[dummy(faker = "40.0 .. 45.0")]
+    mosfet_temperature: f64,
+    #[dummy(faker = "35.0 .. 40.0")]
+    ambient_temperature: f64,
+    #[dummy(faker = "1")]
+    mosfet_status: i32,
+    #[dummy(faker = "16")]
+    cell_voltage_count: i32,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_1: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_2: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_3: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_4: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_5: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_6: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_7: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_8: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_9: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_10: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_11: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_12: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_13: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_14: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_15: f64,
+    #[dummy(faker = "3.0 .. 3.2")]
+    cell_voltage_16: f64,
+    #[dummy(faker = "8")]
+    cell_thermistor_count: i32,
+    #[dummy(faker = "40.0 .. 43.0")]
+    cell_temp_1: f64,
+    #[dummy(faker = "40.0 .. 43.0")]
+    cell_temp_2: f64,
+    #[dummy(faker = "40.0 .. 43.0")]
+    cell_temp_3: f64,
+    #[dummy(faker = "40.0 .. 43.0")]
+    cell_temp_4: f64,
+    #[dummy(faker = "40.0 .. 43.0")]
+    cell_temp_5: f64,
+    #[dummy(faker = "40.0 .. 43.0")]
+    cell_temp_6: f64,
+    #[dummy(faker = "40.0 .. 43.0")]
+    cell_temp_7: f64,
+    #[dummy(faker = "40.0 .. 43.0")]
+    cell_temp_8: f64,
+    #[dummy(faker = "1")]
+    cell_balancing_status: i32,
+    #[dummy(faker = "95.0 .. 96.0")]
+    pack_voltage: f64,
+    #[dummy(faker = "15.0 .. 20.0")]
+    pack_current: f64,
+    #[dummy(faker = "80.0 .. 90.0")]
+    pack_soc: f64,
+    #[dummy(faker = "9.5 .. 9.9")]
+    pack_soh: f64,
+    #[dummy(faker = "9.5 .. 9.9")]
+    pack_sop: f64,
+    #[dummy(faker = "100 .. 150")]
+    pack_cycle_count: i64,
+    #[dummy(faker = "2000 .. 3000")]
+    pack_available_energy: i64,
+    #[dummy(faker = "2000 .. 3000")]
+    pack_consumed_energy: i64,
+    #[dummy(faker = "0")]
+    pack_fault: i32,
+    #[dummy(faker = "1")]
+    pack_status: i32,
 }
 
 pub struct Publisher {
@@ -51,7 +156,7 @@ impl Publisher {
                 Ok(v) => v,
                 Err(rumqttc::ConnectionError::NetworkTimeout)
                 | Err(rumqttc::ConnectionError::FlushTimeout) => {
-                    println!("{} reconnecting", id);
+                    println!("{id} reconnecting");
                     time::sleep(Duration::from_secs(1)).await;
                     continue;
                 }
@@ -61,7 +166,7 @@ impl Publisher {
             if let Event::Incoming(v) = event {
                 match v {
                     Incoming::ConnAck(_) => {
-                        println!("{} connected", id);
+                        println!("{id} connected");
                         break;
                     }
                     incoming => return Err(ConnectionError::WrongPacket(incoming)),
@@ -88,8 +193,11 @@ impl Publisher {
         let mut acks_expected = count;
         let mut outgoing_elapsed = Duration::from_secs(0);
         let mut acks_count = 0;
+        let data_type = self.config.data_type;
+        let data_type_str = self.config.data_type.to_string();
 
-        let topic = self.config.topic_format.replace("{}", &self.id);
+        let topic = self.config.topic_format.replacen("{pub_id}", &self.id, 1);
+        let topic = topic.replacen("{data_type}", &data_type_str, 1);
         let client = self.client.clone();
 
         let wait = barrier_handle.wait();
@@ -112,7 +220,7 @@ impl Publisher {
             // delay between messages in milliseconds
             let delay = if rate == 0 { 0 } else { 1000 / rate };
             task::spawn(async move {
-                requests(topic, count, client, qos, delay).await;
+                requests(topic, count, client, qos, delay, data_type).await;
             });
         } else {
             // Just keep this connection alive
@@ -223,6 +331,25 @@ impl Publisher {
     }
 }
 
+fn generate_data(sequence: usize, data_type: DataType) -> String {
+    let payload: String = match data_type {
+        DataType::Gps => {
+            let fake_data = vec![dummy_gps(sequence as u32)];
+            serde_json::to_string(&fake_data).unwrap()
+        }
+        DataType::Imu => {
+            let fake_data = vec![dummy_imu(sequence as u32)];
+            serde_json::to_string(&fake_data).unwrap()
+        }
+        DataType::Bms => {
+            let fake_data = vec![dummy_bms(sequence as u32)];
+            serde_json::to_string(&fake_data).unwrap()
+        }
+    };
+
+    payload
+}
+
 fn dummy_imu(sequence: u32) -> Imu {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -232,28 +359,51 @@ fn dummy_imu(sequence: u32) -> Imu {
     Imu {
         sequence,
         timestamp,
-        ax: Faker.fake::<f64>(),
-        ay: Faker.fake::<f64>(),
-        az: Faker.fake::<f64>(),
-        pitch: Faker.fake::<f64>(),
-        roll: Faker.fake::<f64>(),
-        yaw: Faker.fake::<f64>(),
-        magx: Faker.fake::<f64>(),
-        magy: Faker.fake::<f64>(),
-        magz: Faker.fake::<f64>(),
+        ..Faker.fake()
+    }
+}
+
+fn dummy_bms(sequence: u32) -> Bms {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    Bms {
+        sequence,
+        timestamp,
+        ..Faker.fake()
+    }
+}
+
+fn dummy_gps(sequence: u32) -> Gps {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    Gps {
+        sequence,
+        timestamp,
+        ..Faker.fake()
     }
 }
 
 /// make count number of requests at specified QoS.
-async fn requests(topic: String, count: usize, client: AsyncClient, qos: QoS, delay: u64) {
+async fn requests(
+    topic: String,
+    count: usize,
+    client: AsyncClient,
+    qos: QoS,
+    delay: u64,
+    data_type: DataType,
+) {
     let mut interval = match delay {
         0 => None,
         delay => Some(time::interval(time::Duration::from_millis(delay))),
     };
 
     for i in 0..count {
-        let fake_data = vec![dummy_imu(i as u32)];
-        let payload = serde_json::to_string(&fake_data).unwrap();
+        let payload = generate_data(i, data_type);
         if let Some(interval) = &mut interval {
             interval.tick().await;
         }
@@ -268,8 +418,7 @@ async fn requests(topic: String, count: usize, client: AsyncClient, qos: QoS, de
     }
 
     if qos == QoS::AtMostOnce {
-        let fake_data = vec![dummy_imu(count as u32)];
-        let payload = serde_json::to_string(&fake_data).unwrap();
+        let payload = generate_data(count, data_type);
         if let Err(_e) = client
             .publish(topic.as_str(), QoS::AtLeastOnce, false, payload)
             .await

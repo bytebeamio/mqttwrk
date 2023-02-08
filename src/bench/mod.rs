@@ -34,7 +34,7 @@ pub(crate) async fn start(config: BenchConfig) {
     // spawning subscribers
     for i in 0..config.subscribers {
         let config = Arc::clone(&config);
-        let id = format!("sub-{:05}", i);
+        let id = format!("sub-{i:05}");
         let barrier_handle = barrier_sub.clone();
         let mut subscriber = subscriber::Subscriber::new(id, config).await.unwrap();
         handles.push(task::spawn(async move {
@@ -45,7 +45,7 @@ pub(crate) async fn start(config: BenchConfig) {
     // spawing publishers
     for i in 0..config.publishers {
         let config = Arc::clone(&config);
-        let id = format!("pub-{:05}", i);
+        let id = format!("pub-{i:05}");
         let barrier_handle = barrier_pub.clone();
         let mut publisher = publisher::Publisher::new(id, config).await.unwrap();
         handles.push(task::spawn(async move {
@@ -55,27 +55,22 @@ pub(crate) async fn start(config: BenchConfig) {
 
     let mut aggregate_substats = SubStats::default();
     let mut aggregate_pubstats = PubStats::default();
-    loop {
-        // await and consume all futures
-        if let Some(some_stat) = handles.next().await {
-            match some_stat.unwrap() {
-                Stats::SubStats(substats) => {
-                    aggregate_substats.publish_count += substats.publish_count;
-                    aggregate_substats.puback_count += substats.puback_count;
-                    aggregate_substats.reconnects += substats.reconnects;
-                    aggregate_substats.throughput += substats.throughput;
-                }
-                Stats::PubStats(pubstats) => {
-                    aggregate_pubstats.outgoing_publish += pubstats.outgoing_publish;
-                    aggregate_pubstats.throughput += pubstats.throughput;
-                    aggregate_pubstats.reconnects += pubstats.reconnects;
-                }
+    // await and consume all futures
+    while let Some(some_stat) = handles.next().await {
+        match some_stat.unwrap() {
+            Stats::SubStats(substats) => {
+                aggregate_substats.publish_count += substats.publish_count;
+                aggregate_substats.puback_count += substats.puback_count;
+                aggregate_substats.reconnects += substats.reconnects;
+                aggregate_substats.throughput += substats.throughput;
             }
-        } else {
-            break;
-        };
+            Stats::PubStats(pubstats) => {
+                aggregate_pubstats.outgoing_publish += pubstats.outgoing_publish;
+                aggregate_pubstats.throughput += pubstats.throughput;
+                aggregate_pubstats.reconnects += pubstats.reconnects;
+            }
+        }
     }
-
     println!(
         "Aggregate PubStats: {:#?}\nAggregate SubStats: {:#?}",
         &aggregate_pubstats, &aggregate_substats
