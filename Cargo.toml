@@ -27,8 +27,6 @@ hdrhistogram = "7.3.0"
 whoami = "1"
 flume = "0.10"
 structopt = "0.3.20"
-rustyline = "6.3"
-rustyline-derive = "0.3"
 colour = "0.6.0"
 colored = "2.0.0"
 fake = { version = "2.5.0", features = ["derive"] }
