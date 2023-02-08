@@ -156,7 +156,7 @@ impl Publisher {
                 Ok(v) => v,
                 Err(rumqttc::ConnectionError::NetworkTimeout)
                 | Err(rumqttc::ConnectionError::FlushTimeout) => {
-                    println!("{} reconnecting", id);
+                    println!("{id} reconnecting");
                     time::sleep(Duration::from_secs(1)).await;
                     continue;
                 }
@@ -166,7 +166,7 @@ impl Publisher {
             if let Event::Incoming(v) = event {
                 match v {
                     Incoming::ConnAck(_) => {
-                        println!("{} connected", id);
+                        println!("{id} connected");
                         break;
                     }
                     incoming => return Err(ConnectionError::WrongPacket(incoming)),
@@ -332,21 +332,20 @@ impl Publisher {
 }
 
 fn generate_data(sequence: usize, data_type: DataType) -> String {
-    let payload: String;
-    match data_type {
+    let payload: String = match data_type {
         DataType::Gps => {
             let fake_data = vec![dummy_gps(sequence as u32)];
-            payload = serde_json::to_string(&fake_data).unwrap();
+            serde_json::to_string(&fake_data).unwrap()
         }
         DataType::Imu => {
             let fake_data = vec![dummy_imu(sequence as u32)];
-            payload = serde_json::to_string(&fake_data).unwrap();
+            serde_json::to_string(&fake_data).unwrap()
         }
         DataType::Bms => {
             let fake_data = vec![dummy_bms(sequence as u32)];
-            payload = serde_json::to_string(&fake_data).unwrap();
+            serde_json::to_string(&fake_data).unwrap()
         }
-    }
+    };
 
     payload
 }

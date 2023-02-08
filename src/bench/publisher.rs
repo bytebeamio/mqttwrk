@@ -33,7 +33,7 @@ impl Publisher {
                 Ok(v) => v,
                 Err(rumqttc::ConnectionError::NetworkTimeout)
                 | Err(rumqttc::ConnectionError::FlushTimeout) => {
-                    println!("{} reconnecting", id);
+                    println!("{id} reconnecting");
                     time::sleep(Duration::from_secs(1)).await;
                     continue;
                 }
@@ -43,7 +43,7 @@ impl Publisher {
             if let Event::Incoming(v) = event {
                 match v {
                     Incoming::ConnAck(_) => {
-                        println!("{} connected", id);
+                        println!("{id} connected");
                         break;
                     }
                     incoming => return Err(ConnectionError::WrongPacket(incoming)),
@@ -222,7 +222,7 @@ async fn requests(
 
     // For QoS requests we send an extra publish at last with QoS1 which is used for syncronization
     if qos == QoS::AtMostOnce {
-        count = count - 1;
+        count -= 1;
     }
 
     for i in 0..count {

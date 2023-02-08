@@ -13,7 +13,7 @@ use crate::RoundConfig;
 pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
     let connections = vec![1usize, 2, 5, 10, 15, 20, 30, 40, 50, 75, 100, 150, 200];
     // let connections = vec![70];
-    let execution_time = opt.duration as u64;
+    let execution_time = opt.duration;
 
     for (iteration, connections) in connections.iter().enumerate() {
         if iteration != 0 {
@@ -34,7 +34,7 @@ pub(crate) async fn start(opt: RoundConfig) -> Result<()> {
             let opt = opt.clone();
             let task = task::spawn(async move {
                 let v = time::timeout(
-                    Duration::from_secs(opt.duration as u64 + 10),
+                    Duration::from_secs(opt.duration + 10),
                     connection(c, opt, stop, barrier),
                 )
                 .await;
