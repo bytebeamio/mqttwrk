@@ -185,6 +185,7 @@ impl Display for DataType {
 fn main() {
     pretty_env_logger::init();
     let config: Config = Config::parse();
+
     match config {
         Config::Bench(config) => {
             bench::start(config);

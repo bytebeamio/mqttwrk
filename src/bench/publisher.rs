@@ -43,7 +43,7 @@ impl Publisher {
             if let Event::Incoming(v) = event {
                 match v {
                     Incoming::ConnAck(_) => {
-                        println!("{id} connected");
+                        // println!("{id} connected");
                         break;
                     }
                     incoming => return Err(ConnectionError::WrongPacket(incoming)),

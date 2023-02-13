@@ -1,6 +1,7 @@
 use std::{fs, io, sync::Arc, time::Duration};
 
 use futures::StreamExt;
+use indicatif::{ProgressBar, ProgressStyle};
 use rumqttc::{MqttOptions, QoS, Transport};
 use tokio::{sync::Barrier, task};
 
@@ -32,26 +33,49 @@ pub(crate) async fn start(config: BenchConfig) {
     let barrier_pub = Arc::new(Barrier::new(config.publishers));
 
     // spawning subscribers
+    let bar = ProgressBar::new(config.subscribers as u64)
+        .with_prefix("Subscribers Spawned:")
+        .with_style(
+            ProgressStyle::with_template(
+                "{spinner:.bold.bright.yellow} {prefix:>22} {pos:>7}/{len:7} {bar:40.cyan/blue} {msg}",
+            )
+                .unwrap()
+                .progress_chars("##-"),
+        );
     for i in 0..config.subscribers {
         let config = Arc::clone(&config);
         let id = format!("sub-{i:05}");
         let barrier_handle = barrier_sub.clone();
+        bar.set_message(format!("spawning {id}"));
         let mut subscriber = subscriber::Subscriber::new(id, config).await.unwrap();
         handles.push(task::spawn(async move {
             Stats::SubStats(subscriber.start(barrier_handle).await)
         }));
+        bar.inc(1);
     }
+    bar.finish_with_message("Done!");
 
     // spawing publishers
+    let bar = ProgressBar::new(config.publishers as u64).with_prefix("Publishers Spawned:")
+        .with_style(
+            ProgressStyle::with_template(
+                "{spinner:.bold.bright.yellow} {prefix:>22} {pos:>7}/{len:7} {bar:40.cyan/blue} {msg}",
+            )
+                .unwrap()
+                .progress_chars("##-"),
+        );
     for i in 0..config.publishers {
         let config = Arc::clone(&config);
         let id = format!("pub-{i:05}");
         let barrier_handle = barrier_pub.clone();
+        bar.set_message(format!("spawning {id}"));
         let mut publisher = publisher::Publisher::new(id, config).await.unwrap();
         handles.push(task::spawn(async move {
             Stats::PubStats(publisher.start(barrier_handle).await)
         }));
+        bar.inc(1);
     }
+    bar.finish_with_message("Done!");
 
     let mut aggregate_substats = SubStats::default();
     let mut aggregate_pubstats = PubStats::default();
