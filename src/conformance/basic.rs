@@ -2,6 +2,7 @@
 
 use crate::common::{self, WrappedEventLoop};
 use colored::Colorize;
+use indicatif::ProgressBar;
 use rumqttc::{
     matches, AsyncClient, ConnAck, ConnectReturnCode, Event, Incoming, LastWill, MqttOptions,
     Outgoing, Packet, PubAck, Publish, QoS, SubAck, Subscribe, SubscribeFilter,
@@ -11,8 +12,8 @@ use std::thread;
 use std::time::Duration;
 
 // TODO?: Connecting to same socket twice should fail
-pub async fn test_basic() {
-    yellow_ln!("Basic test");
+pub async fn test_basic(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Basic test".yellow().to_string());
     let mut config = MqttOptions::new("conformance-basic", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
 
@@ -75,11 +76,12 @@ pub async fn test_basic() {
     let incoming = eventloop.poll().await.unwrap(); // incoming:publish
     assert!(matches!(incoming, Incoming::Publish(Publish { .. })));
 
-    green_ln!("Basic test succedeed")
+    progress_bar.inc(1);
+    progress_bar.println("Basic test succedeed".green().to_string());
 }
 
-pub async fn session_test() {
-    yellow_ln!("Starting session test");
+pub async fn session_test(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Session test".yellow().to_string());
 
     let mut config = MqttOptions::new("conformance-session", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
@@ -122,11 +124,12 @@ pub async fn session_test() {
             code: ConnectReturnCode::Success
         })
     );
-    green_ln!("Session test successful");
+    progress_bar.inc(1);
+    progress_bar.println("Session test successful".green().to_string());
 }
 
-pub async fn test_overlapping_subscriptions() {
-    yellow_ln!("Overlapping subscriptions test");
+pub async fn test_overlapping_subscriptions(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Overlapping subscriptions test".yellow().to_string());
     let mut config = MqttOptions::new("conformance-overlapping-subscriptions", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
     config.set_clean_session(true);
@@ -156,28 +159,39 @@ pub async fn test_overlapping_subscriptions() {
 
     let notif1 = eventloop.poll().await.unwrap(); // publish from topic/+
     let notif2 = eventloop.poll().await.unwrap(); // publish from topic/#
-    dbg!(&notif1, &notif2);
+                                                  // dbg!(&notif1, &notif2);
 
     let notif1_is_publish = matches!(notif1, Incoming::Publish(Publish { .. }));
     let notif2_is_publish = matches!(notif2, Incoming::Publish(Publish { .. }));
 
     match (notif1_is_publish, notif2_is_publish) {
         (true, false) | (false, true) => {
-            yellow_ln!("Broker publishes 1 message per overlapping subscription");
+            progress_bar.println(
+                "Broker publishes 1 message per overlapping subscription"
+                    .green()
+                    .to_string(),
+            );
         }
-        (true, true) => {
-            yellow_ln!("Broker publishes 1 message for all matching subscription")
-        }
+        (true, true) => progress_bar.println(
+            "Broker publishes 1 message for all matching subscription"
+                .green()
+                .to_string(),
+        ),
         (false, false) => {
             panic!("Should receive atleast 1 publish message");
         }
     }
-    green_ln!("Overlapping subscriptions test Successful");
+    progress_bar.inc(1);
+    progress_bar.println(
+        "Overlapping subscriptions test Successful"
+            .green()
+            .to_string(),
+    );
 }
 
 // TODO: Not disconnecting the client if keep_alive time has passed with no messages from client
-pub async fn test_keepalive() {
-    yellow_ln!("Ping test");
+pub async fn test_keepalive(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Ping test".yellow().to_string());
     let mut config = MqttOptions::new("conformance-overlapping-subscriptions", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
     config.set_last_will(LastWill::new(
@@ -195,14 +209,18 @@ pub async fn test_keepalive() {
     for i in 0..5 {
         let incoming = eventloop.poll().await.unwrap();
         assert!(matches!(incoming, Incoming::PingResp));
-        green_ln!("Ping response {} received", i);
+        progress_bar.println(format!("Ping response {} received", i).green().to_string());
     }
 
-    green_ln!("Ping test successful");
+    progress_bar.println("Ping test successful".green().to_string());
 }
 
-pub async fn test_retain_on_different_connect() {
-    yellow_ln!("Retained message test");
+pub async fn test_retain_on_different_connect(progress_bar: &ProgressBar) {
+    progress_bar.set_message(
+        "Retained message test on different connect"
+            .yellow()
+            .to_string(),
+    );
 
     let mut config = MqttOptions::new("conformance-retained-message", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
@@ -296,12 +314,13 @@ pub async fn test_retain_on_different_connect() {
 
     // We cleared all the retained messages so should only receive pings
     assert_eq!(notif2, Incoming::PingResp);
-    green_ln!("Retained message test Successful");
+    progress_bar.inc(1);
+    progress_bar.println("Retained message test Successful".green().to_string());
 }
 
 // TODO: messages not being retained
-pub async fn test_retained_messages() {
-    yellow_ln!("Retained message test");
+pub async fn test_retained_messages(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Retained message test".yellow().to_string());
 
     let mut config = MqttOptions::new("conformance-retained-message", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
@@ -375,11 +394,13 @@ pub async fn test_retained_messages() {
 
     // We cleared all the retained messages so should only receive pings
     assert_eq!(notif2, Incoming::PingResp);
-    green_ln!("Retained message test Successful");
+    progress_bar.inc(1);
+    progress_bar.println("Retained message test Successful".green().to_string());
 }
 
 // TODO: Currently rumqttc panics for this test. According to spec broker should be the one handling this not client
-pub async fn test_zero_length_clientid() {
+pub async fn test_zero_length_clientid(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Zero length clientid".yellow().to_string());
     let mut config = MqttOptions::new("", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
     config.set_clean_session(true);
@@ -412,8 +433,8 @@ pub async fn test_zero_length_clientid() {
     );
 }
 
-pub async fn test_offline_message_queueing() {
-    yellow_ln!("Offline message Queue test");
+pub async fn test_offline_message_queueing(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Offline message Queue test".yellow().to_string());
     let mut config1 = MqttOptions::new("conformance-offline-message-queue", "localhost", 1883);
     config1.set_keep_alive(Duration::from_secs(5));
     config1.set_clean_session(false);
@@ -468,10 +489,18 @@ pub async fn test_offline_message_queueing() {
 
     match (notif1_is_pubilsh, notif2_is_pubilsh) {
         (true, false) => {
-            yellow_ln!("Brokers doesn't queue's QoS0 messages for offline clients.");
+            progress_bar.println(
+                "Brokers doesn't queue's QoS0 messages for offline clients."
+                    .green()
+                    .to_string(),
+            );
         }
         (true, true) => {
-            yellow_ln!("Brokers queue's QoS0 messages for offline clients.");
+            progress_bar.println(
+                "Brokers queue's QoS0 messages for offline clients."
+                    .green()
+                    .to_string(),
+            );
         }
         _ => {
             panic!("First notif should be a publish");
@@ -490,11 +519,12 @@ pub async fn test_offline_message_queueing() {
         .unwrap();
     let _ = eventloop2.poll().await.unwrap(); // incoming: puback
 
-    green_ln!("Offline message Queue test successful");
+    progress_bar.inc(1);
+    progress_bar.println("Offline message Queue test successful".green().to_string());
 }
 
-pub async fn test_will_message() {
-    yellow_ln!("Will message test");
+pub async fn test_will_message(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Will message test".yellow().to_string());
     let mut config = MqttOptions::new("conformance-will-message", "localhost", 1883);
     config
         .set_clean_session(true)
@@ -538,11 +568,12 @@ pub async fn test_will_message() {
     let notif3 = eventloop2.poll().await.unwrap(); // publish
 
     assert!(matches!(notif3, Incoming::Publish(Publish { .. })));
-    green_ln!("Will message test Successful");
+    progress_bar.inc(1);
+    progress_bar.println("Will message test Successful".green().to_string());
 }
 
-pub async fn test_dollar_topic_filter() {
-    yellow_ln!("Dollar topic test");
+pub async fn test_dollar_topic_filter(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Dollar topic test".yellow().to_string());
     let mut config = MqttOptions::new("conformance-dollar-topic-filter", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
 
@@ -560,11 +591,12 @@ pub async fn test_dollar_topic_filter() {
 
     let notif1 = eventloop1.poll().await.unwrap();
     assert!(matches!(notif1, Incoming::PingResp));
-    green_ln!("Dollar topic test Successful");
+    progress_bar.inc(1);
+    progress_bar.println("Dollar topic test Successful".green().to_string());
 }
 
-pub async fn test_unsubscribe() {
-    yellow_ln!("Unsubscribe test");
+pub async fn test_unsubscribe(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Unsubscribe test".yellow().to_string());
     let mut config = MqttOptions::new("conformance-unsubscribe", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
 
@@ -618,14 +650,15 @@ pub async fn test_unsubscribe() {
 
     for _ in 0..5 {
         let notif3 = eventloop1.poll().await.unwrap();
-        dbg!(&notif3);
+        // dbg!(&notif3);
         assert!(matches!(notif3, Incoming::PingResp));
     }
-    green_ln!("Unsubscribe test Successful");
+    progress_bar.inc(1);
+    progress_bar.println("Unsubscribe test Successful".green().to_string());
 }
 
-pub async fn test_subscribe_failure() {
-    yellow_ln!("Subscribe failure test");
+pub async fn test_subscribe_failure(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Subscribe failure test".yellow().to_string());
     let mut config = MqttOptions::new("conformance-sub-failure", "localhost", 1883);
     config.set_keep_alive(Duration::from_secs(5));
 
@@ -640,12 +673,13 @@ pub async fn test_subscribe_failure() {
 
     // TODO: Err should contain more descriptive message
     assert!(eventloop.poll().await.is_err());
-    green_ln!("Subscribe failure test Successful");
+    progress_bar.inc(1);
+    progress_bar.println("Subscribe failure test Successful".green().to_string());
 }
 
 // TODO: re-eval this after retransmission is implemented in broker
-pub async fn test_redelivery_on_reconnect() {
-    yellow_ln!("Redelivery test");
+pub async fn test_redelivery_on_reconnect(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Redelivery test".yellow().to_string());
     let mut config = MqttOptions::new("conformance-test-redelivery", "localhost", 1883);
     config
         .set_keep_alive(Duration::from_secs(5))
@@ -679,14 +713,15 @@ pub async fn test_redelivery_on_reconnect() {
     let _ = eventloop.poll().await.unwrap(); // connack
 
     let incoming1 = eventloop.poll().await.unwrap(); // incoming:publish
-    dbg!(&incoming1);
+                                                     // dbg!(&incoming1);
     assert!(matches!(incoming1, Incoming::Publish(Publish { .. })));
 
-    green_ln!("Redelivery test Successful");
+    progress_bar.inc(1);
+    progress_bar.println("Redelivery test Successful".green().to_string());
 }
 
-pub async fn test_connack_with_clean_session() {
-    yellow_ln!("Connack with clean session test");
+pub async fn test_connack_with_clean_session(progress_bar: &ProgressBar) {
+    progress_bar.set_message("Connack with clean session test".yellow().to_string());
     // To make sure any of the previous tests doesn't affect this create a connection and drop it
     // immediately to clean any previous state
     let mut config = MqttOptions::new("conformance-connack-clean", "localhost", 1883);
@@ -741,5 +776,10 @@ pub async fn test_connack_with_clean_session() {
             code: ConnectReturnCode::Success
         })
     );
-    green_ln!("Connack with clean session test Successful");
+    progress_bar.inc(1);
+    progress_bar.println(
+        "Connack with clean session test Successful"
+            .green()
+            .to_string(),
+    );
 }
