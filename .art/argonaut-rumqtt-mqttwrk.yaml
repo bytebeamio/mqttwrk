@@ -17,11 +17,11 @@ persistentStorage:
   []
 resources:
   requests:
-    cpu: "500m"
-    memory: "512M"
-  limits:
     cpu: "1000m"
-    memory: "1500M"
+    memory: "1024M"
+  limits:
+    cpu: "1400m"
+    memory: "6000M"
 #########################################################################################
 # Everything below this is optional and advanced configuration                          #
 # and irrelevant in most scenarios.                                                     #
@@ -173,4 +173,4 @@ extraEnvs: []
 #  - name: MY_ENVIRONMENT_VAR
 #    value: the_value_goes_here
 
-# Generated at 2023-02-28 06:47:30.729002209 +0000 UTC
+# Generated at 2023-02-28 18:02:43.735688611 +0000 UTC
