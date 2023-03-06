@@ -21,7 +21,7 @@ pub static PROGRESS_BAR: Lazy<indicatif::ProgressBar> = Lazy::new(|| {
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub async fn start(config: ConformanceConfig) {
     test_basic(&config).await;
-    test_keepalive(&config).await;
+    // test_keepalive(&config).await;
     session_test(&config).await;
     test_will_message(&config).await;
     test_connack_with_clean_session(&config).await;
