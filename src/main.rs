@@ -32,7 +32,7 @@ enum Config {
     Bench(BenchConfig),
     Round(RoundConfig),
     Simulator(SimulatorConfig),
-    Conformance,
+    Conformance(ConformanceConfig),
     Test,
 }
 
@@ -165,6 +165,16 @@ struct SimulatorConfig {
     data_type: DataType,
 }
 
+#[derive(Debug, Parser)]
+pub struct ConformanceConfig {
+    /// Broker's address
+    #[arg(short = 'S', long, default_value = "localhost", value_name = "URL")]
+    server: String,
+    /// Port
+    #[arg(short = 'P', long, default_value = "1883")]
+    port: u16,
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 pub enum DataType {
     Imu,
@@ -185,6 +195,7 @@ impl Display for DataType {
 fn main() {
     pretty_env_logger::init();
     let config: Config = Config::parse();
+
     match config {
         Config::Bench(config) => {
             bench::start(config);
@@ -195,8 +206,8 @@ fn main() {
         Config::Round(config) => {
             round::start(config).unwrap();
         }
-        Config::Conformance => {
-            conformance::start();
+        Config::Conformance(config) => {
+            conformance::start(config);
         }
         Config::Test => {
             test::start();

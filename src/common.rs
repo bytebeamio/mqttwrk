@@ -1,4 +1,14 @@
+use indicatif::ProgressStyle;
+use once_cell::sync::Lazy;
 use rumqttc::{AsyncClient, ConnectionError, Event, EventLoop, Incoming, MqttOptions};
+
+pub static PROGRESS_STYLE: Lazy<indicatif::ProgressStyle> = Lazy::new(|| {
+    ProgressStyle::with_template(
+        "{spinner:.bold.bright.yellow} {prefix:>22} {pos:>7}/{len:7} {bar:40.cyan/blue} {msg}",
+    )
+    .expect("progress style template should be correct")
+    .progress_chars("##-")
+});
 
 pub enum Stats {
     PubStats(PubStats),
