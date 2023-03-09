@@ -29,7 +29,7 @@ def main():
     clickhouse_client.command(f"TRUNCATE demo.{DATA_TYPE};")
 
     subprocess.run([
-        "/usr/share/bytebeam/target/release/mqttwrk", "simulator",
+        "/usr/share/bytebeam/mqttwrk/target/release/mqttwrk", "simulator",
         "-p", str(PUBLISHERS), 
         "-s", str(1),
         "--count", str(COUNT),

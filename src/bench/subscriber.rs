@@ -138,6 +138,9 @@ impl Subscriber {
                         .unwrap();
                     last_publish = Instant::now();
                 }
+                Event::Outgoing(Outgoing::PubAck(_)) => {
+                    puback_count += 1;
+                }
                 Event::Incoming(Incoming::PingResp) | Event::Outgoing(_) => {}
                 incoming => error!(
                     "Id = {}, Unexpected incoming packet = {:?}",
