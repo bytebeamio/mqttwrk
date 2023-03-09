@@ -24,7 +24,7 @@ ENV LANG=C.UTF-8
 
 RUN apt-get -y upgrade
 RUN apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y sudo curl runit vim wget gnupg2 lsb-release
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y sudo curl runit vim wget gnupg2 lsb-release python3-pip
 
 COPY runit/ /etc/runit
 RUN rm -rf /etc/runit/runsvdir
