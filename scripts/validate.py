@@ -29,11 +29,12 @@ def main():
     clickhouse_client.command(f"TRUNCATE demo.{DATA_TYPE};")
 
     subprocess.run([
-        "./target/debug/mqttwrk", "simulator",
+        "/usr/share/bytebeam/target/release/mqttwrk", "simulator",
         "-p", str(PUBLISHERS), 
         "-s", str(1),
         "--count", str(COUNT),
         "--data-type", DATA_TYPE,
+        "-S", "beamd"
     ])
 
     total = PUBLISHERS * COUNT
@@ -56,8 +57,6 @@ def main():
             logging.info(f"[{now}] Couldn't send message on slack")
         sys.exit(1)
 
-    logging.info(f"[{now}] Sleeping for 5 minutes before re-running")
-    sleep(5 * 60)
 
 def message_slack(message):
     slack_client = WebClient(token=environ['SLACK_API_TOKEN'])
@@ -65,4 +64,10 @@ def message_slack(message):
     slack_client.chat_postMessage(channel=slack_channel, text=message)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        logging.info(f"[{datetime.now()}] Something went wront, Please check. Exception: {e}")
+
+    logging.info(f"[{datetime.now()}] Sleeping for 5 minutes before re-running")
+    sleep(5 * 60)
