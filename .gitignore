@@ -7,3 +7,5 @@ target
 .idea
 out.txt
 history.txt
+
+.env

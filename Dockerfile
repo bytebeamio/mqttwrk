@@ -31,5 +31,6 @@ RUN rm -rf /etc/runit/runsvdir
 
 COPY --from=build /usr/share/bytebeam/mqttwrk /usr/share/bytebeam/mqttwrk
 WORKDIR /usr/share/bytebeam/mqttwrk
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 CMD ["/usr/bin/runsvdir", "/etc/runit"]
