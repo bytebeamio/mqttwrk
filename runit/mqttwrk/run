@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # exec /usr/share/bytebeam/mqttwrk/target/release/mqttwrk bench -n 1000000 -p 1000 -s 1 -r 1 -h beamd
-exec python /usr/share/bytebeam/mqttwrk/scripts/validate.py
+exec python3 /usr/share/bytebeam/mqttwrk/scripts/validate.py
 
 if [ $? -ne 0 ]; then
   sv stop /etc/runit/mqttwrk
