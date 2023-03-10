@@ -26,7 +26,9 @@ impl Publisher {
         config: Arc<BenchConfig>,
     ) -> Result<Publisher, ConnectionError> {
         let (client, mut eventloop) = AsyncClient::new(options(config.clone(), &id)?, 10);
-        eventloop.network_options.set_connection_timeout(10);
+        eventloop
+            .network_options
+            .set_connection_timeout(config.conn_timeout);
 
         loop {
             let event = match eventloop.poll().await {

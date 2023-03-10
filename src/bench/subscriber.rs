@@ -23,7 +23,9 @@ impl Subscriber {
         config: Arc<BenchConfig>,
     ) -> Result<Subscriber, ConnectionError> {
         let (client, mut eventloop) = AsyncClient::new(options(config.clone(), &id)?, 10);
-        eventloop.network_options.set_connection_timeout(10);
+        eventloop
+            .network_options
+            .set_connection_timeout(config.conn_timeout);
 
         // waiting for connection
         loop {
