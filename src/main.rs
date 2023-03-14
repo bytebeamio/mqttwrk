@@ -30,59 +30,165 @@ mod test;
 )]
 enum Config {
     Bench(BenchConfig),
-    Round(RoundConfig),
     Simulator(SimulatorConfig),
+    Round(RoundConfig),
     Conformance(ConformanceConfig),
     Test,
 }
 
 #[derive(Debug, Parser)]
 struct BenchConfig {
-    /// Broker's address
     #[arg(short = 'S', long, default_value = "localhost", value_name = "URL")]
     server: String,
-    /// Port
     #[arg(short = 'P', long, default_value = "1883")]
     port: u16,
-    /// No. of messages per publisher (n = 0 is for idle connection to test pings)
-    #[arg(short = 'n', long, default_value = "100", value_name = "NUM")]
-    count: usize,
-    /// No. of Publishers
+
     #[arg(short = 'p', long, default_value = "1", value_name = "NUM")]
     publishers: usize,
-    /// No. of Subscribers
     #[arg(short = 's', long, default_value = "0", value_name = "NUM")]
     subscribers: usize,
-    /// QoS used for Publishes
+
     #[arg(long, default_value = "0", value_name = "QoS")]
     publish_qos: i16,
-    /// Payload size in Bytes
-    #[arg(short = 'm', long, default_value = "100")]
-    payload_size: usize,
-    /// QoS used by Subscriber
     #[arg(long, default_value = "0", value_name = "QoS")]
     subscribe_qos: i16,
-    /// Keep Alive
-    #[arg(short = 'k', long, default_value = "10")]
-    keep_alive: u64,
-    /// Max Inflight Messages
-    #[arg(short = 'i', long, default_value = "100")]
-    max_inflight: u16,
-    /// Path to PEM encoded x509 ca-chain file
-    #[arg(short = 'R', long)]
-    ca_file: Option<String>,
-    /// Connection Timeout
-    #[arg(short = 't', long, default_value = "10")]
-    conn_timeout: u64,
-    /// Message rate per second. (0 means no throttle)
+
+    #[arg(short = 'n', long, default_value = "100", value_name = "NUM")]
+    count: usize,
     #[arg(short = 'r', long, default_value = "0")]
     rate: u64,
-    /// Show publisher stats
+    #[arg(short = 'm', long, default_value = "100")]
+    payload_size: usize,
+
+    #[arg(
+        long,
+        default_value = "{unique_id}/hello/{pub_id}/world",
+        long_help = "\
+Topic format to which data is published to.
+When present:
+    `{pub_id}` is replaced by publisher_id
+    `{unique_id}` is replaced with a randomly generated string.
+This is useful to uniquely identify different runs of benchmark.
+"
+    )]
+    topic_format: String,
+    #[arg(
+        long,
+        default_value = "true",
+        long_help = "\
+If true, prefixes a unique_id to client_id of each publisher and subsciber. 
+Same as `{unique_id}` in `topic_format`.
+"
+    )]
+    unique_client_id_prefix: bool,
+
+    #[arg(short = 'k', long, default_value = "10")]
+    keep_alive: u64,
+    #[arg(short = 'i', long, default_value = "100")]
+    max_inflight: u16,
+    #[arg(short = 't', long, default_value = "10")]
+    conn_timeout: u64,
+
+    #[arg(short = 'R', long)]
+    ca_file: Option<String>,
+
     #[arg(long, default_value = "false")]
     show_pub_stat: bool,
-    /// Show subscriber stats
     #[arg(long, default_value = "false")]
     show_sub_stat: bool,
+
+    #[arg(long, default_value = "0")]
+    sleep_sub: u64,
+}
+
+#[derive(Debug, Parser)]
+struct SimulatorConfig {
+    #[arg(short = 'S', long, default_value = "localhost", value_name = "URL")]
+    server: String,
+    #[arg(short = 'P', long, default_value = "1883")]
+    port: u16,
+
+    #[arg(short = 'p', long, default_value = "1", value_name = "NUM")]
+    publishers: usize,
+    #[arg(short = 's', long, default_value = "0", value_name = "NUM")]
+    subscribers: usize,
+
+    #[arg(long, default_value = "0", value_name = "QoS")]
+    publish_qos: i16,
+    #[arg(long, default_value = "0", value_name = "QoS")]
+    subscribe_qos: i16,
+
+    #[arg(short = 'n', long, default_value = "100", value_name = "NUM")]
+    count: usize,
+    #[arg(short = 'r', long, default_value = "0")]
+    rate: u64,
+    #[arg(short = 'm', long, default_value = "100")]
+    payload_size: usize,
+    #[arg(long, value_enum)]
+    data_type: DataType,
+
+    #[arg(
+        long,
+        default_value = "/tenants/demo/devices/{pub_id}/events/{data_type}/jsonarray",
+        long_help = "\
+Topic format to which data is published to.
+When present:
+    `{pub_id}` is replaced by publisher_id
+    `{unique_id}` is replaced with a randomly generated string.
+This is useful to uniquely identify different runs of benchmark.
+"
+    )]
+    topic_format: String,
+    #[arg(
+        long,
+        default_value = "true",
+        long_help = "\
+If true, prefixes a unique_id to client_id of each publisher and subsciber. 
+Same as `{unique_id}` in `topic_format`.
+"
+    )]
+    #[arg(long, default_value = "true")]
+    unique_client_id_prefix: bool,
+
+    #[arg(short = 'k', long, default_value = "10")]
+    keep_alive: u64,
+    #[arg(short = 'i', long, default_value = "100")]
+    max_inflight: u16,
+    #[arg(short = 't', long, default_value = "10")]
+    conn_timeout: u64,
+
+    #[arg(short = 'R', long)]
+    ca_file: Option<String>,
+
+    #[arg(long, default_value = "false")]
+    show_pub_stat: bool,
+    #[arg(long, default_value = "false")]
+    show_sub_stat: bool,
+
+    #[arg(long, default_value = "0")]
+    sleep_sub: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct RunnerConfig {
+    server: String,
+    port: u16,
+    publishers: usize,
+    subscribers: usize,
+    publish_qos: i16,
+    subscribe_qos: i16,
+    count: usize,
+    rate: u64,
+    payload: DataType,
+    topic_format: String,
+    unique_client_id_prefix: bool,
+    keep_alive: u64,
+    max_inflight: u16,
+    conn_timeout: u64,
+    ca_file: Option<String>,
+    show_pub_stat: bool,
+    show_sub_stat: bool,
+    sleep_sub: u64,
 }
 
 #[derive(Clone, Debug, Parser)]
@@ -105,67 +211,6 @@ struct RoundConfig {
 }
 
 #[derive(Debug, Parser)]
-struct SimulatorConfig {
-    /// default topic format to which data is published to.
-    /// if present:
-    ///     `{pub_id}` is replaced by publisher_id
-    ///     `{data_type}` is replace by type of data being published
-    #[arg(
-        long,
-        default_value = "/tenants/demo/devices/{pub_id}/events/{data_type}/jsonarray"
-    )]
-    topic_format: String,
-    /// number of messages (n = 0 is for idle connection to test pings)
-    #[arg(short = 'n', long, default_value = "100")]
-    count: usize,
-    /// server
-    #[arg(short = 'S', long, default_value = "localhost")]
-    server: String,
-    /// port
-    #[arg(short = 'P', long, default_value = "1883")]
-    port: u16,
-    /// number of publishers
-    #[arg(short = 'p', default_value = "1")]
-    publishers: usize,
-    /// number of subscribers
-    #[arg(short = 's', default_value = "0")]
-    subscribers: usize,
-    /// qos, default 1
-    #[arg(short = 'x', default_value = "1")]
-    publish_qos: i16,
-    /// qos, default 1
-    #[arg(short = 'y', default_value = "1")]
-    subscribe_qos: i16,
-    /// size of payload
-    /// keep alive
-    #[arg(short = 'k', long, default_value = "10")]
-    keep_alive: u64,
-    /// max inflight messages
-    #[arg(short = 'i', long, default_value = "100")]
-    max_inflight: u16,
-    /// path to PEM encoded x509 ca-chain file
-    #[arg(short = 'R', long)]
-    ca_file: Option<String>,
-    /// connection_timeout
-    #[arg(short = 't', long, default_value = "5")]
-    conn_timeout: u64,
-    /// message rate. 0 => no throttle
-    #[arg(long, default_value = "0")]
-    rate_pub: u64,
-    #[arg(long, default_value = "0")]
-    sleep_sub: u64,
-    /// Show publisher stats
-    #[arg(long, default_value = "false")]
-    show_pub_stat: bool,
-    /// Show subscriber stats
-    #[arg(long, default_value = "false")]
-    show_sub_stat: bool,
-    /// Type of data to send
-    #[arg(long, value_enum)]
-    data_type: DataType,
-}
-
-#[derive(Debug, Parser)]
 pub struct ConformanceConfig {
     /// Broker's address
     #[arg(short = 'S', long, default_value = "localhost", value_name = "URL")]
@@ -177,6 +222,8 @@ pub struct ConformanceConfig {
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 pub enum DataType {
+    #[value(skip)]
+    Default(usize),
     Imu,
     Bms,
     Gps,
@@ -185,6 +232,7 @@ pub enum DataType {
 impl Display for DataType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Default(_) => f.write_str("default"),
             Self::Imu => f.write_str("imu"),
             Self::Bms => f.write_str("bms"),
             Self::Gps => f.write_str("gps"),
@@ -201,7 +249,7 @@ fn main() {
             bench::start(config);
         }
         Config::Simulator(config) => {
-            simulator::start(config);
+            bench::start(config);
         }
         Config::Round(config) => {
             round::start(config).unwrap();

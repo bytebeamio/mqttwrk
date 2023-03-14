@@ -9,13 +9,14 @@ use tokio::{
 };
 
 use crate::{
-    bench::{ConnectionError, PubStats},
-    BenchConfig,
+    bench::ConnectionError,
+    bench::{gendata::generate_data, PubStats},
+    DataType, RunnerConfig,
 };
 
 pub struct Publisher {
     id: String,
-    config: Arc<BenchConfig>,
+    config: Arc<RunnerConfig>,
     client: AsyncClient,
     eventloop: EventLoop,
 }
@@ -23,7 +24,7 @@ pub struct Publisher {
 impl Publisher {
     pub(crate) async fn new(
         id: String,
-        config: Arc<BenchConfig>,
+        config: Arc<RunnerConfig>,
     ) -> Result<Publisher, ConnectionError> {
         let (client, mut eventloop) = AsyncClient::new(options(config.clone(), &id)?, 10);
         eventloop
@@ -64,17 +65,18 @@ impl Publisher {
     pub async fn start(&mut self, barrier_handle: Arc<Barrier>) -> PubStats {
         let qos = get_qos(self.config.publish_qos);
         let inflight = self.config.max_inflight;
-        let payload_size = self.config.payload_size;
         let count = self.config.count;
         let rate = self.config.rate;
         let id = self.id.clone();
+        let payload = self.config.payload;
 
         let start = Instant::now();
         let mut acks_expected = count;
         let mut outgoing_elapsed = Duration::from_secs(0);
         let mut acks_count = 0;
 
-        let topic = format!("hello/{}/world", self.id);
+        let mut topic = self.config.topic_format.replace("{pub_id}", &self.id);
+        topic = topic.replace("{data_type}", &self.config.payload.to_string());
         let client = self.client.clone();
 
         let wait = barrier_handle.wait();
@@ -97,7 +99,7 @@ impl Publisher {
             // delay between messages in milliseconds
             let delay = if rate == 0 { 0 } else { 1000 / rate };
             task::spawn(async move {
-                requests(topic, payload_size, count, client, qos, delay).await;
+                requests(topic, count, client, qos, delay, payload).await;
             });
         } else {
             // Just keep this connection alive
@@ -211,24 +213,19 @@ impl Publisher {
 /// make count number of requests at specified QoS.
 async fn requests(
     topic: String,
-    payload_size: usize,
-    mut count: usize,
+    count: usize,
     client: AsyncClient,
     qos: QoS,
     delay: u64,
+    data_type: DataType,
 ) {
     let mut interval = match delay {
         0 => None,
         delay => Some(time::interval(time::Duration::from_millis(delay))),
     };
 
-    // For QoS requests we send an extra publish at last with QoS1 which is used for syncronization
-    if qos == QoS::AtMostOnce {
-        count -= 1;
-    }
-
     for i in 0..count {
-        let payload = vec![0; payload_size];
+        let payload = generate_data(i, data_type);
         if let Some(interval) = &mut interval {
             interval.tick().await;
         }
@@ -243,7 +240,7 @@ async fn requests(
     }
 
     if qos == QoS::AtMostOnce {
-        let payload = vec![0; payload_size];
+        let payload = generate_data(count, data_type);
         if let Err(_e) = client
             .publish(topic.as_str(), QoS::AtLeastOnce, false, payload)
             .await
@@ -263,7 +260,7 @@ fn get_qos(qos: i16) -> QoS {
     }
 }
 
-fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOptions> {
+fn options(config: Arc<RunnerConfig>, id: &str) -> io::Result<MqttOptions> {
     let mut options = MqttOptions::new(id, &config.server, config.port);
     options.set_keep_alive(Duration::from_secs(config.keep_alive));
     options.set_inflight(config.max_inflight);

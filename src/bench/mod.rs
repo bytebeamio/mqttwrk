@@ -7,9 +7,10 @@ use tokio::{sync::Barrier, task};
 
 use crate::{
     common::{PubStats, Stats, SubStats, PROGRESS_STYLE},
-    BenchConfig,
+    BenchConfig, DataType, RunnerConfig,
 };
 
+mod gendata;
 mod publisher;
 mod subscriber;
 
@@ -25,18 +26,45 @@ pub enum ConnectionError {
     Client(#[from] rumqttc::ClientError),
 }
 
+impl From<BenchConfig> for RunnerConfig {
+    fn from(value: BenchConfig) -> Self {
+        let payload = DataType::Default(value.payload_size);
+        Self {
+            server: value.server,
+            port: value.port,
+            publishers: value.publishers,
+            subscribers: value.subscribers,
+            publish_qos: value.publish_qos,
+            subscribe_qos: value.subscribe_qos,
+            count: value.count,
+            rate: value.rate,
+            payload,
+            topic_format: value.topic_format,
+            unique_client_id_prefix: value.unique_client_id_prefix,
+            keep_alive: value.keep_alive,
+            max_inflight: value.max_inflight,
+            conn_timeout: value.conn_timeout,
+            ca_file: value.ca_file,
+            show_pub_stat: value.show_pub_stat,
+            show_sub_stat: value.show_sub_stat,
+            sleep_sub: value.sleep_sub,
+        }
+    }
+}
+
+// Simulator is a special kind of Bench
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
-pub(crate) async fn start(config: BenchConfig) {
-    let config = Arc::new(config);
+pub(crate) async fn start(config: impl Into<RunnerConfig>) {
+    let config = Arc::new(config.into());
     let mut handles = futures::stream::FuturesUnordered::new();
     let barrier_sub = Arc::new(Barrier::new(config.subscribers));
     let barrier_pub = Arc::new(Barrier::new(config.publishers));
 
-    // spawning subscribers
     let sub_bar = ProgressBar::new(config.subscribers as u64)
         .with_prefix("Subscribers Spawned:")
         .with_style((*PROGRESS_STYLE).clone());
 
+    // spawning subscribers
     for i in 0..config.subscribers {
         let config = Arc::clone(&config);
         let id = format!("sub-{i:05}");
@@ -86,13 +114,14 @@ pub(crate) async fn start(config: BenchConfig) {
             }
         }
     }
+
     println!(
         "Aggregate PubStats: {:#?}\nAggregate SubStats: {:#?}",
         &aggregate_pubstats, &aggregate_substats
     );
 }
 
-pub(crate) fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOptions> {
+pub(crate) fn options(config: Arc<RunnerConfig>, id: &str) -> io::Result<MqttOptions> {
     let mut options = MqttOptions::new(id, &config.server, config.port);
     options.set_keep_alive(Duration::from_secs(config.keep_alive));
     options.set_inflight(config.max_inflight);
