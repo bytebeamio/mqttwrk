@@ -10,11 +10,6 @@ pub static PROGRESS_STYLE: Lazy<indicatif::ProgressStyle> = Lazy::new(|| {
     .progress_chars("##-")
 });
 
-pub enum Stats {
-    PubStats(PubStats),
-    SubStats(SubStats),
-}
-
 #[derive(Default, Debug)]
 pub struct SubStats {
     pub publish_count: u64,

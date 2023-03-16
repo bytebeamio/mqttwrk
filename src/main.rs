@@ -74,7 +74,7 @@ This is useful to uniquely identify different runs of benchmark.
     topic_format: String,
     #[arg(
         long,
-        default_value = "true",
+        default_value_t = true,
         long_help = "\
 If true, prefixes a unique_id to client_id of each publisher and subsciber. 
 Same as `{unique_id}` in `topic_format`.
@@ -141,13 +141,12 @@ This is useful to uniquely identify different runs of benchmark.
     topic_format: String,
     #[arg(
         long,
-        default_value = "true",
+        default_value_t = true,
         long_help = "\
 If true, prefixes a unique_id to client_id of each publisher and subsciber. 
 Same as `{unique_id}` in `topic_format`.
 "
     )]
-    #[arg(long, default_value = "true")]
     unique_client_id_prefix: bool,
 
     #[arg(short = 'k', long, default_value = "10")]
