@@ -22,7 +22,7 @@ impl From<SimulatorConfig> for RunnerConfig {
             rate: value.rate,
             payload: value.data_type,
             topic_format: value.topic_format,
-            unique_client_id_prefix: value.unique_client_id_prefix,
+            disable_unqiue_clientid_prefix: value.disable_unique_clientid_prefix,
             keep_alive: value.keep_alive,
             max_inflight: value.max_inflight,
             conn_timeout: value.conn_timeout,

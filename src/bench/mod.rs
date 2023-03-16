@@ -6,7 +6,7 @@ use rumqttc::{MqttOptions, QoS, Transport};
 use tokio::{sync::Barrier, task::JoinSet, time::Instant};
 
 use crate::{
-    common::{PubStats, SubStats, PROGRESS_STYLE},
+    common::{PubStats, SubStats, PROGRESS_STYLE, UNIQUE_ID},
     BenchConfig, DataType, RunnerConfig,
 };
 
@@ -40,7 +40,7 @@ impl From<BenchConfig> for RunnerConfig {
             rate: value.rate,
             payload,
             topic_format: value.topic_format,
-            unique_client_id_prefix: value.unique_client_id_prefix,
+            disable_unqiue_clientid_prefix: value.disable_unique_clientid_prefix,
             keep_alive: value.keep_alive,
             max_inflight: value.max_inflight,
             conn_timeout: value.conn_timeout,
@@ -56,7 +56,8 @@ impl From<BenchConfig> for RunnerConfig {
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub(crate) async fn start(config: impl Into<RunnerConfig>) {
     let config = Arc::new(config.into());
-    dbg!(&config.unique_client_id_prefix);
+    dbg!(&(*UNIQUE_ID));
+    dbg!(&config.disable_unqiue_clientid_prefix);
     let progress_bar = MultiProgress::new();
     let pub_bar = progress_bar.add(
         ProgressBar::new(config.publishers as u64)
@@ -88,11 +89,19 @@ pub async fn handle_subs(config: Arc<RunnerConfig>, sub_bar: ProgressBar) -> (Su
     let mut handles_sub = JoinSet::new();
     let barrier_sub = Arc::new(Barrier::new(config.subscribers + 1));
     let mut aggregate_substats = SubStats::default();
+    let unique_id;
+
+    if config.disable_unqiue_clientid_prefix {
+        unique_id = "".to_string();
+    } else {
+        let id = &(*UNIQUE_ID);
+        unique_id = format!("-{id}");
+    }
 
     // spawning subscribers
     for i in 0..config.subscribers {
         let config = Arc::clone(&config);
-        let id = format!("sub-{i:05}");
+        let id = format!("sub{unique_id}-{i:05}");
         let barrier_handle = barrier_sub.clone();
         sub_bar.set_message(format!("spawning {id}"));
         let mut subscriber = subscriber::Subscriber::new(id, config).await.unwrap();
@@ -122,6 +131,14 @@ pub async fn handle_subs(config: Arc<RunnerConfig>, sub_bar: ProgressBar) -> (Su
 pub async fn handle_pubs(config: Arc<RunnerConfig>, pub_bar: ProgressBar) -> (PubStats, f64) {
     let mut handles_pub = JoinSet::new();
     let barrier_pub = Arc::new(Barrier::new(config.publishers + 1));
+    let unique_id;
+
+    if config.disable_unqiue_clientid_prefix {
+        unique_id = "".to_string();
+    } else {
+        let id = &(*UNIQUE_ID);
+        unique_id = format!("-{id}");
+    }
 
     let mut aggregate_pubstats = PubStats::default();
 
@@ -129,7 +146,7 @@ pub async fn handle_pubs(config: Arc<RunnerConfig>, pub_bar: ProgressBar) -> (Pu
 
     for i in 0..config.publishers {
         let config = Arc::clone(&config);
-        let id = format!("pub-{i:05}");
+        let id = format!("pub{unique_id}-{i:05}");
         let barrier_handle = barrier_pub.clone();
         pub_bar.set_message(format!("spawning {id}"));
         let mut publisher = publisher::Publisher::new(id, config).await.unwrap();

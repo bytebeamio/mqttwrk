@@ -74,13 +74,12 @@ This is useful to uniquely identify different runs of benchmark.
     topic_format: String,
     #[arg(
         long,
-        default_value_t = true,
         long_help = "\
 If true, prefixes a unique_id to client_id of each publisher and subsciber. 
 Same as `{unique_id}` in `topic_format`.
 "
     )]
-    unique_client_id_prefix: bool,
+    disable_unique_clientid_prefix: bool,
 
     #[arg(short = 'k', long, default_value = "10")]
     keep_alive: u64,
@@ -147,7 +146,7 @@ If true, prefixes a unique_id to client_id of each publisher and subsciber.
 Same as `{unique_id}` in `topic_format`.
 "
     )]
-    unique_client_id_prefix: bool,
+    disable_unique_clientid_prefix: bool,
 
     #[arg(short = 'k', long, default_value = "10")]
     keep_alive: u64,
@@ -180,7 +179,7 @@ pub struct RunnerConfig {
     rate: u64,
     payload: DataType,
     topic_format: String,
-    unique_client_id_prefix: bool,
+    disable_unqiue_clientid_prefix: bool,
     keep_alive: u64,
     max_inflight: u16,
     conn_timeout: u64,
