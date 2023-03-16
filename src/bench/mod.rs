@@ -56,8 +56,6 @@ impl From<BenchConfig> for RunnerConfig {
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub(crate) async fn start(config: impl Into<RunnerConfig>) {
     let config = Arc::new(config.into());
-    dbg!(&(*UNIQUE_ID));
-    dbg!(&config.disable_unqiue_clientid_prefix);
     let progress_bar = MultiProgress::new();
     let pub_bar = progress_bar.add(
         ProgressBar::new(config.publishers as u64)
@@ -73,24 +71,12 @@ pub(crate) async fn start(config: impl Into<RunnerConfig>) {
     );
     sub_bar.enable_steady_tick(Duration::from_secs_f64(0.1));
 
-    let (aggregate_pubstats, aggregate_substats) = join(
-        handle_pubs(Arc::clone(&config), pub_bar),
-        handle_subs(Arc::clone(&config), sub_bar),
-    )
-    .await;
-
-    println!(
-        "Aggregate PubStats: {:#?}\nAggregate SubStats: {:#?}",
-        &aggregate_pubstats, &aggregate_substats
-    );
-}
-
-pub async fn handle_subs(config: Arc<RunnerConfig>, sub_bar: ProgressBar) -> (SubStats, f64) {
     let mut handles_sub = JoinSet::new();
+    let mut handles_pub = JoinSet::new();
     let barrier_sub = Arc::new(Barrier::new(config.subscribers + 1));
-    let mut aggregate_substats = SubStats::default();
-    let unique_id;
+    let barrier_pub = Arc::new(Barrier::new(config.publishers + 1));
 
+    let unique_id;
     if config.disable_unqiue_clientid_prefix {
         unique_id = "".to_string();
     } else {
@@ -111,38 +97,8 @@ pub async fn handle_subs(config: Arc<RunnerConfig>, sub_bar: ProgressBar) -> (Su
 
     let barrier_sub_handle = barrier_sub.clone();
     barrier_sub_handle.wait().await;
-    let sub_start_time = Instant::now();
+    let _sub_start_time = Instant::now();
     sub_bar.finish_with_message("Done!");
-
-    while let Some(Ok(sub_stat)) = handles_sub.join_next().await {
-        aggregate_substats.publish_count += sub_stat.publish_count;
-        aggregate_substats.puback_count += sub_stat.puback_count;
-        aggregate_substats.reconnects += sub_stat.reconnects;
-        aggregate_substats.throughput += sub_stat.throughput;
-    }
-
-    let total_messages = config.subscribers * (config.count * config.publishers);
-    let sub_time = sub_start_time.elapsed().as_secs_f64();
-    let throughput = total_messages as f64 / sub_time;
-
-    (aggregate_substats, throughput)
-}
-
-pub async fn handle_pubs(config: Arc<RunnerConfig>, pub_bar: ProgressBar) -> (PubStats, f64) {
-    let mut handles_pub = JoinSet::new();
-    let barrier_pub = Arc::new(Barrier::new(config.publishers + 1));
-    let unique_id;
-
-    if config.disable_unqiue_clientid_prefix {
-        unique_id = "".to_string();
-    } else {
-        let id = &(*UNIQUE_ID);
-        unique_id = format!("-{id}");
-    }
-
-    let mut aggregate_pubstats = PubStats::default();
-
-    pub_bar.enable_steady_tick(Duration::from_secs_f64(0.1));
 
     for i in 0..config.publishers {
         let config = Arc::clone(&config);
@@ -157,6 +113,47 @@ pub async fn handle_pubs(config: Arc<RunnerConfig>, pub_bar: ProgressBar) -> (Pu
     barrier_pub_handle.wait().await;
     let pub_start_time = Instant::now();
     pub_bar.finish_with_message("Done!");
+
+    let (aggregate_pubstats, aggregate_substats) = join(
+        handle_pubs(Arc::clone(&config), handles_pub, pub_start_time),
+        // Passing pub_start_time to subscribers to calculate throughput because it is the time
+        // from which publishers start publishing
+        handle_subs(Arc::clone(&config), handles_sub, pub_start_time),
+    )
+    .await;
+
+    println!(
+        "Aggregate PubStats: {:#?}\nAggregate SubStats: {:#?}",
+        &aggregate_pubstats, &aggregate_substats
+    );
+}
+
+pub async fn handle_subs(
+    config: Arc<RunnerConfig>,
+    mut handles_sub: JoinSet<SubStats>,
+    sub_start_time: Instant,
+) -> (SubStats, f64) {
+    let mut aggregate_substats = SubStats::default();
+    while let Some(Ok(sub_stat)) = handles_sub.join_next().await {
+        aggregate_substats.publish_count += sub_stat.publish_count;
+        aggregate_substats.puback_count += sub_stat.puback_count;
+        aggregate_substats.reconnects += sub_stat.reconnects;
+        aggregate_substats.throughput += sub_stat.throughput;
+    }
+
+    let total_messages = config.subscribers * (config.count * config.publishers);
+    let sub_time = sub_start_time.elapsed().as_secs_f64();
+    let throughput = total_messages as f64 / sub_time;
+
+    (aggregate_substats, throughput)
+}
+
+pub async fn handle_pubs(
+    config: Arc<RunnerConfig>,
+    mut handles_pub: JoinSet<PubStats>,
+    pub_start_time: Instant,
+) -> (PubStats, f64) {
+    let mut aggregate_pubstats = PubStats::default();
 
     while let Some(Ok(pub_stat)) = handles_pub.join_next().await {
         aggregate_pubstats.outgoing_publish += pub_stat.outgoing_publish;
