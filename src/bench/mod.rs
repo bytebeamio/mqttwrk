@@ -97,7 +97,6 @@ pub(crate) async fn start(config: impl Into<RunnerConfig>) {
 
     let barrier_sub_handle = barrier_sub.clone();
     barrier_sub_handle.wait().await;
-    let _sub_start_time = Instant::now();
     sub_bar.finish_with_message("Done!");
 
     for i in 0..config.publishers {
@@ -111,14 +110,15 @@ pub(crate) async fn start(config: impl Into<RunnerConfig>) {
     }
     let barrier_pub_handle = barrier_pub.clone();
     barrier_pub_handle.wait().await;
-    let pub_start_time = Instant::now();
     pub_bar.finish_with_message("Done!");
 
+    let test_start_time = Instant::now();
+
     let (aggregate_pubstats, aggregate_substats) = join(
-        handle_pubs(Arc::clone(&config), handles_pub, pub_start_time),
+        handle_pubs(handles_pub, test_start_time),
         // Passing pub_start_time to subscribers to calculate throughput because it is the time
         // from which publishers start publishing
-        handle_subs(Arc::clone(&config), handles_sub, pub_start_time),
+        handle_subs(handles_sub, test_start_time),
     )
     .await;
 
@@ -129,9 +129,8 @@ pub(crate) async fn start(config: impl Into<RunnerConfig>) {
 }
 
 pub async fn handle_subs(
-    config: Arc<RunnerConfig>,
     mut handles_sub: JoinSet<SubStats>,
-    sub_start_time: Instant,
+    start_time: Instant,
 ) -> (SubStats, f64) {
     let mut aggregate_substats = SubStats::default();
     while let Some(Ok(sub_stat)) = handles_sub.join_next().await {
@@ -141,17 +140,16 @@ pub async fn handle_subs(
         aggregate_substats.throughput += sub_stat.throughput;
     }
 
-    let total_messages = config.subscribers * (config.count * config.publishers);
-    let sub_time = sub_start_time.elapsed().as_secs_f64();
+    let total_messages = aggregate_substats.publish_count;
+    let sub_time = start_time.elapsed().as_secs_f64();
     let throughput = total_messages as f64 / sub_time;
 
     (aggregate_substats, throughput)
 }
 
 pub async fn handle_pubs(
-    config: Arc<RunnerConfig>,
     mut handles_pub: JoinSet<PubStats>,
-    pub_start_time: Instant,
+    start_time: Instant,
 ) -> (PubStats, f64) {
     let mut aggregate_pubstats = PubStats::default();
 
@@ -161,8 +159,8 @@ pub async fn handle_pubs(
         aggregate_pubstats.reconnects += pub_stat.reconnects;
     }
 
-    let total_messages = config.count * config.publishers;
-    let pub_time = pub_start_time.elapsed().as_secs_f64();
+    let total_messages = aggregate_pubstats.outgoing_publish;
+    let pub_time = start_time.elapsed().as_secs_f64();
     let throughput = total_messages as f64 / pub_time;
 
     (aggregate_pubstats, throughput)
