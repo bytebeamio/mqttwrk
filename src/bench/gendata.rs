@@ -1,4 +1,4 @@
-use crate::DataType;
+use crate::cli::DataType;
 use fake::{Dummy, Fake, Faker};
 use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};

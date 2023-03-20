@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use tokio::{sync::Barrier, task, time};
 use tokio_util::sync::CancellationToken;
 
-use crate::RoundConfig;
+use crate::cli::RoundConfig;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub(crate) async fn start(opt: RoundConfig) -> Result<()> {

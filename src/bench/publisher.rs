@@ -11,8 +11,8 @@ use tokio::{
 use crate::{
     bench::ConnectionError,
     bench::{gendata::generate_data, PubStats},
+    cli::{DataType, RunnerConfig},
     common::UNIQUE_ID,
-    DataType, RunnerConfig,
 };
 
 pub struct Publisher {

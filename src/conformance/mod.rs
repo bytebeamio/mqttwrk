@@ -6,8 +6,8 @@ use basic::*;
 use indicatif::ProgressBar;
 use once_cell::sync::Lazy;
 
+use crate::cli::ConformanceConfig;
 use crate::common::PROGRESS_STYLE;
-use crate::ConformanceConfig;
 
 pub static PROGRESS_BAR: Lazy<indicatif::ProgressBar> = Lazy::new(|| {
     let progress_bar = ProgressBar::new(12)

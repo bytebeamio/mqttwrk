@@ -9,8 +9,8 @@ use tokio::{sync::Barrier, time};
 
 use crate::{
     bench::{get_qos, options, ConnectionError, SubStats},
+    cli::RunnerConfig,
     common::UNIQUE_ID,
-    RunnerConfig,
 };
 
 pub struct Subscriber {
