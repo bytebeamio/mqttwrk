@@ -1,4 +1,4 @@
-use crate::cli::DataType;
+use crate::cli::DataEvent;
 use fake::{Dummy, Fake, Faker};
 use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -123,21 +123,21 @@ pub struct Bms {
     pack_status: i32,
 }
 
-pub fn generate_data(sequence: usize, data_type: DataType) -> String {
+pub fn generate_data(data_type: DataEvent) -> String {
     let payload: String = match data_type {
-        DataType::Default(payload_size) => {
+        DataEvent::Default { payload_size, .. } => {
             let fake_data = vec![0; payload_size];
             serde_json::to_string(&fake_data).unwrap()
         }
-        DataType::Gps => {
+        DataEvent::Gps { sequence, .. } => {
             let fake_data = vec![dummy_gps(sequence as u32)];
             serde_json::to_string(&fake_data).unwrap()
         }
-        DataType::Imu => {
+        DataEvent::Imu { sequence, .. } => {
             let fake_data = vec![dummy_imu(sequence as u32)];
             serde_json::to_string(&fake_data).unwrap()
         }
-        DataType::Bms => {
+        DataEvent::Bms { sequence, .. } => {
             let fake_data = vec![dummy_bms(sequence as u32)];
             serde_json::to_string(&fake_data).unwrap()
         }

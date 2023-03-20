@@ -1,6 +1,6 @@
-use std::fmt::Display;
+use std::time::Duration;
 
-use clap::{Args, Parser, ValueEnum};
+use clap::{Args, Parser};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -26,6 +26,10 @@ pub struct BenchConfig {
 
     #[arg(short = 'm', long, default_value = "100")]
     pub payload_size: usize,
+
+    #[arg(short = 'r', long, default_value = "0")]
+    pub rate: u64,
+
     #[arg(
         long,
         default_value = "{unique_id}/hello/{pub_id}/world",
@@ -48,11 +52,14 @@ pub struct SimulatorConfig {
     #[command(flatten)]
     common_config: _CommonConfig,
 
-    #[arg(short = 'm', long, default_value = "100")]
-    pub payload_size: usize,
+    #[arg(long, default_value = "100")]
+    pub imu_rate: u64,
 
-    #[arg(long, value_enum)]
-    pub data_type: DataType,
+    #[arg(long, default_value = "100")]
+    pub bms_rate: u64,
+
+    #[arg(long, default_value = "100")]
+    pub gps_rate: u64,
 
     #[arg(
         long,
@@ -82,8 +89,6 @@ struct _CommonConfig {
 
     #[arg(short = 'n', long, default_value = "100", value_name = "NUM")]
     pub count: usize,
-    #[arg(short = 'r', long, default_value = "0")]
-    pub rate: u64,
 
     #[arg(
         long,
@@ -122,6 +127,75 @@ struct _NetworkConfig {
     pub conn_timeout: u64,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum DataEvent {
+    Default {
+        sequence: usize,
+        delay: Duration,
+        payload_size: usize,
+    },
+    Gps {
+        sequence: usize,
+        delay: Duration,
+    },
+    Imu {
+        sequence: usize,
+        delay: Duration,
+    },
+    Bms {
+        sequence: usize,
+        delay: Duration,
+    },
+}
+
+impl DataEvent {
+    pub fn inc_sequence(&self) -> Self {
+        let mut ret = *self;
+        match ret {
+            DataEvent::Default {
+                ref mut sequence, ..
+            } => {
+                *sequence += 1;
+            }
+            DataEvent::Gps {
+                ref mut sequence, ..
+            } => {
+                *sequence += 1;
+            }
+            DataEvent::Imu {
+                ref mut sequence, ..
+            } => {
+                *sequence += 1;
+            }
+            DataEvent::Bms {
+                ref mut sequence, ..
+            } => {
+                *sequence += 1;
+            }
+        }
+
+        ret
+    }
+
+    pub fn sequence(&self) -> usize {
+        match self {
+            DataEvent::Default { sequence, .. } => *sequence,
+            DataEvent::Gps { sequence, .. } => *sequence,
+            DataEvent::Imu { sequence, .. } => *sequence,
+            DataEvent::Bms { sequence, .. } => *sequence,
+        }
+    }
+
+    pub fn duration(&self) -> Duration {
+        match self {
+            DataEvent::Default { delay, .. } => *delay,
+            DataEvent::Gps { delay, .. } => *delay,
+            DataEvent::Imu { delay, .. } => *delay,
+            DataEvent::Bms { delay, .. } => *delay,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RunnerConfig {
     pub server: String,
@@ -131,10 +205,9 @@ pub struct RunnerConfig {
     pub publish_qos: i16,
     pub subscribe_qos: i16,
     pub count: usize,
-    pub rate: u64,
-    pub payload: DataType,
     pub topic_format: String,
     pub disable_unqiue_clientid_prefix: bool,
+    pub tasks: Vec<DataEvent>,
     pub keep_alive: u64,
     pub max_inflight: u16,
     pub conn_timeout: u64,
@@ -173,34 +246,41 @@ pub struct ConformanceConfig {
     pub port: u16,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
-pub enum DataType {
-    #[value(skip)]
-    Default(usize),
-    Imu,
-    Bms,
-    Gps,
-}
-
-impl Display for DataType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Default(_) => f.write_str("default"),
-            Self::Imu => f.write_str("imu"),
-            Self::Bms => f.write_str("bms"),
-            Self::Gps => f.write_str("gps"),
-        }
-    }
-}
-
 impl From<SimulatorConfig> for RunnerConfig {
     fn from(value: SimulatorConfig) -> Self {
-        match value.data_type {
-            DataType::Default(_) => {
-                panic!("Shouldn't specify payload size when specifying data_type")
-            }
-            _ => {}
+        let imu_delay = if value.imu_rate == 0 {
+            0
+        } else {
+            1000 / value.imu_rate
         };
+        let bms_delay = if value.bms_rate == 0 {
+            0
+        } else {
+            1000 / value.bms_rate
+        };
+        let gps_delay = if value.gps_rate == 0 {
+            0
+        } else {
+            1000 / value.gps_rate
+        };
+
+        let imu_delay = Duration::from_millis(imu_delay);
+        let bms_delay = Duration::from_millis(bms_delay);
+        let gps_delay = Duration::from_millis(gps_delay);
+        let tasks = vec![
+            DataEvent::Imu {
+                sequence: 1,
+                delay: imu_delay,
+            },
+            DataEvent::Bms {
+                sequence: 1,
+                delay: bms_delay,
+            },
+            DataEvent::Gps {
+                sequence: 1,
+                delay: gps_delay,
+            },
+        ];
 
         Self {
             server: value.network_config.server,
@@ -210,8 +290,6 @@ impl From<SimulatorConfig> for RunnerConfig {
             publish_qos: value.common_config.publish_qos,
             subscribe_qos: value.common_config.subscribe_qos,
             count: value.common_config.count,
-            rate: value.common_config.rate,
-            payload: value.data_type,
             topic_format: value.topic_format,
             disable_unqiue_clientid_prefix: value.common_config.disable_unique_clientid_prefix,
             keep_alive: value.network_config.keep_alive,
@@ -221,13 +299,25 @@ impl From<SimulatorConfig> for RunnerConfig {
             show_pub_stat: value.common_config.show_pub_stat,
             show_sub_stat: value.common_config.show_sub_stat,
             sleep_sub: value.common_config.sleep_sub,
+            tasks,
         }
     }
 }
 
 impl From<BenchConfig> for RunnerConfig {
     fn from(value: BenchConfig) -> Self {
-        let payload = DataType::Default(value.payload_size);
+        let delay = if value.rate == 0 {
+            0
+        } else {
+            1000 / value.rate
+        };
+        let delay = Duration::from_millis(delay);
+        let tasks = vec![DataEvent::Default {
+            sequence: 1,
+            delay,
+            payload_size: value.payload_size,
+        }];
+
         Self {
             server: value.network_config.server,
             port: value.network_config.port,
@@ -236,8 +326,6 @@ impl From<BenchConfig> for RunnerConfig {
             publish_qos: value.common_config.publish_qos,
             subscribe_qos: value.common_config.subscribe_qos,
             count: value.common_config.count,
-            rate: value.common_config.rate,
-            payload,
             topic_format: value.topic_format,
             disable_unqiue_clientid_prefix: value.common_config.disable_unique_clientid_prefix,
             keep_alive: value.network_config.keep_alive,
@@ -247,6 +335,7 @@ impl From<BenchConfig> for RunnerConfig {
             show_pub_stat: value.common_config.show_pub_stat,
             show_sub_stat: value.common_config.show_sub_stat,
             sleep_sub: value.common_config.sleep_sub,
+            tasks,
         }
     }
 }

@@ -42,9 +42,9 @@ impl Subscriber {
             }
         }
 
-        let mut topic = config.topic_format.replacen("{pub_id}", "+", 1);
-        topic = topic.replace("{unique_id}", &(*UNIQUE_ID));
-        topic = topic.replacen("{data_type}", &config.payload.to_string(), 1);
+        let mut topic = config.topic_format.replace("{pub_id}", "+");
+        topic = topic.replace("{unique_id}", &UNIQUE_ID);
+        topic = topic.replace("{data_type}", "+");
 
         // subscribing
         client

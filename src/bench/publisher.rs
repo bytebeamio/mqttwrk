@@ -1,5 +1,6 @@
 use std::{fs, io, sync::Arc, time::Instant};
 
+use futures::StreamExt;
 use hdrhistogram::Histogram;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, QoS, Transport};
 use tokio::{
@@ -7,11 +8,12 @@ use tokio::{
     task,
     time::{self, Duration},
 };
+use tokio_util::time::DelayQueue;
 
 use crate::{
     bench::ConnectionError,
     bench::{gendata::generate_data, PubStats},
-    cli::{DataType, RunnerConfig},
+    cli::{DataEvent, RunnerConfig},
     common::UNIQUE_ID,
 };
 
@@ -20,6 +22,7 @@ pub struct Publisher {
     config: Arc<RunnerConfig>,
     client: AsyncClient,
     eventloop: EventLoop,
+    queue: DelayQueue<DataEvent>,
 }
 
 impl Publisher {
@@ -31,6 +34,12 @@ impl Publisher {
         eventloop
             .network_options
             .set_connection_timeout(config.conn_timeout);
+
+        let mut queue = DelayQueue::new();
+
+        for task in &config.tasks {
+            queue.insert(*task, task.duration());
+        }
 
         loop {
             let event = match eventloop.poll().await {
@@ -60,16 +69,16 @@ impl Publisher {
             config,
             client,
             eventloop,
+            queue,
         })
     }
 
-    pub async fn start(&mut self, barrier_handle: Arc<Barrier>) -> PubStats {
+    pub async fn start(mut self, barrier_handle: Arc<Barrier>) -> PubStats {
         let qos = get_qos(self.config.publish_qos);
         let inflight = self.config.max_inflight;
-        let count = self.config.count;
-        let rate = self.config.rate;
+        let count = self.config.count * self.config.tasks.len();
         let id = self.id.clone();
-        let payload = self.config.payload;
+        let queue = self.queue;
 
         let start = Instant::now();
         let mut acks_expected = count;
@@ -77,9 +86,8 @@ impl Publisher {
         let mut acks_count = 0;
 
         let mut topic = self.config.topic_format.replace("{pub_id}", &self.id);
-        topic = topic.replace("{unique_id}", &(*UNIQUE_ID));
-        topic = topic.replace("{data_type}", &self.config.payload.to_string());
-        let client = self.client.clone();
+        topic = topic.replace("{unique_id}", &UNIQUE_ID);
+        let client = self.client;
 
         let wait = barrier_handle.wait();
         tokio::pin!(wait);
@@ -99,18 +107,17 @@ impl Publisher {
         // which can be used to test pings
         if count != 0 {
             // delay between messages in milliseconds
-            let delay = if rate == 0 { 0 } else { 1000 / rate };
             task::spawn(async move {
-                requests(topic, count, client, qos, delay, payload).await;
+                requests(topic, count, client, qos, queue).await;
             });
         } else {
             // Just keep this connection alive
-            acks_expected = 1;
+            acks_expected = self.config.tasks.len();
         }
 
         if self.config.publish_qos == 0 {
             // only last extra publish is qos 1 for synchronization
-            acks_expected = 1;
+            acks_expected = self.config.tasks.len();
         }
 
         let mut reconnects: u64 = 0;
@@ -218,18 +225,17 @@ async fn requests(
     count: usize,
     client: AsyncClient,
     qos: QoS,
-    delay: u64,
-    data_type: DataType,
+    mut queue: DelayQueue<DataEvent>,
 ) {
-    let mut interval = match delay {
-        0 => None,
-        delay => Some(time::interval(time::Duration::from_millis(delay))),
-    };
+    while let Some(t) = queue.next().await {
+        let expected_time = t.deadline();
+        let curr_time = Instant::now();
 
-    for i in 0..count {
-        let payload = generate_data(i, data_type);
-        if let Some(interval) = &mut interval {
-            interval.tick().await;
+        let event_type = t.into_inner();
+        let payload = generate_data(event_type);
+
+        if event_type.sequence() < count {
+            queue.insert(event_type.inc_sequence(), event_type.duration());
         }
 
         // These errors are usually due to eventloop task being dead. We can ignore the
@@ -237,14 +243,11 @@ async fn requests(
         if let Err(_e) = client.publish(topic.as_str(), qos, false, payload).await {
             break;
         }
-
-        info!("published {}", i);
     }
 
     if qos == QoS::AtMostOnce {
-        let payload = generate_data(count, data_type);
         if let Err(_e) = client
-            .publish(topic.as_str(), QoS::AtLeastOnce, false, payload)
+            .publish("test/complete", QoS::AtLeastOnce, false, "")
             .await
         {
             // TODO
