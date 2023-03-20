@@ -9,6 +9,7 @@ use tokio::{sync::Barrier, time};
 
 use crate::{
     bench::{get_qos, options, ConnectionError, SubStats},
+    common::UNIQUE_ID,
     RunnerConfig,
 };
 
@@ -42,6 +43,7 @@ impl Subscriber {
         }
 
         let mut topic = config.topic_format.replacen("{pub_id}", "+", 1);
+        topic = topic.replace("{unique_id}", &(*UNIQUE_ID));
         topic = topic.replacen("{data_type}", &config.payload.to_string(), 1);
 
         // subscribing

@@ -11,6 +11,7 @@ use tokio::{
 use crate::{
     bench::ConnectionError,
     bench::{gendata::generate_data, PubStats},
+    common::UNIQUE_ID,
     DataType, RunnerConfig,
 };
 
@@ -76,6 +77,7 @@ impl Publisher {
         let mut acks_count = 0;
 
         let mut topic = self.config.topic_format.replace("{pub_id}", &self.id);
+        topic = topic.replace("{unique_id}", &(*UNIQUE_ID));
         topic = topic.replace("{data_type}", &self.config.payload.to_string());
         let client = self.client.clone();
 
