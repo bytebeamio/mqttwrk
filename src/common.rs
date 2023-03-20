@@ -1,4 +1,5 @@
 use indicatif::ProgressStyle;
+use nanoid::nanoid;
 use once_cell::sync::Lazy;
 use rumqttc::{AsyncClient, ConnectionError, Event, EventLoop, Incoming, MqttOptions};
 
@@ -10,10 +11,7 @@ pub static PROGRESS_STYLE: Lazy<indicatif::ProgressStyle> = Lazy::new(|| {
     .progress_chars("##-")
 });
 
-pub enum Stats {
-    PubStats(PubStats),
-    SubStats(SubStats),
-}
+pub static UNIQUE_ID: Lazy<String> = Lazy::new(|| nanoid!(8));
 
 #[derive(Default, Debug)]
 pub struct SubStats {
