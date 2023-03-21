@@ -71,7 +71,6 @@ impl Publisher {
         let id = self.id.clone();
         let payload = self.config.payload;
 
-        let start = Instant::now();
         let mut acks_expected = count;
         let mut outgoing_elapsed = Duration::from_secs(0);
         let mut acks_count = 0;
@@ -94,6 +93,8 @@ impl Publisher {
                 }
             };
         }
+
+        let start = Instant::now();
 
         // If publish count is 0, don't publish. This is an idle connection
         // which can be used to test pings
