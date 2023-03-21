@@ -112,12 +112,12 @@ impl Publisher {
             });
         } else {
             // Just keep this connection alive
-            acks_expected = self.config.tasks.len();
+            acks_expected = 1;
         }
 
         if self.config.publish_qos == 0 {
             // only last extra publish is qos 1 for synchronization
-            acks_expected = self.config.tasks.len();
+            acks_expected = 1;
         }
 
         let mut reconnects: u64 = 0;
@@ -208,7 +208,7 @@ impl Publisher {
 
         // if publish_qos is 0 assume we send all publishes
         if self.config.publish_qos == 0 {
-            acks_count = self.config.count;
+            acks_count = count;
         }
 
         PubStats {
@@ -228,8 +228,8 @@ async fn requests(
     mut queue: DelayQueue<DataEvent>,
 ) {
     while let Some(t) = queue.next().await {
-        let expected_time = t.deadline();
-        let curr_time = Instant::now();
+        // let expected_time = t.deadline();
+        // let curr_time = Instant::now();
 
         let event_type = t.into_inner();
         let payload = generate_data(event_type);
