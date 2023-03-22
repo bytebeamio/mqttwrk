@@ -71,8 +71,7 @@ impl Subscriber {
     }
 
     pub async fn start(&mut self, barrier_handle: Arc<Barrier>) -> SubStats {
-        let required_publish_count =
-            self.config.count * self.config.publishers * self.config.tasks.len();
+        let required_publish_count = self.config.count * self.config.publishers;
         // total number of publishes received
         let mut publish_count = 0;
         // total number of pubacks sent

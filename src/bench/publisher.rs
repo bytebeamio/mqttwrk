@@ -76,7 +76,7 @@ impl Publisher {
     pub async fn start(mut self, barrier_handle: Arc<Barrier>) -> PubStats {
         let qos = get_qos(self.config.publish_qos);
         let inflight = self.config.max_inflight;
-        let count = self.config.count * self.config.tasks.len();
+        let count = self.config.count;
         let id = self.id.clone();
         let queue = self.queue;
 
@@ -228,6 +228,7 @@ async fn requests(
     qos: QoS,
     mut queue: DelayQueue<DataEvent>,
 ) {
+    let mut curr_count = 0;
     while let Some(t) = queue.next().await {
         // let expected_time = t.deadline();
         // let curr_time = Instant::now();
@@ -235,13 +236,17 @@ async fn requests(
         let event_type = t.into_inner();
         let payload = generate_data(event_type);
 
-        if event_type.sequence() < count {
-            queue.insert(event_type.inc_sequence(), event_type.duration());
-        }
+        queue.insert(event_type.inc_sequence(), event_type.duration());
 
         // These errors are usually due to eventloop task being dead. We can ignore the
         // error here as the failed eventloop task would have already printed an error
         if let Err(_e) = client.publish(topic.as_str(), qos, false, payload).await {
+            break;
+        }
+
+        curr_count += 1;
+
+        if curr_count == count {
             break;
         }
     }
