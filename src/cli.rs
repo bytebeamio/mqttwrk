@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::time::Duration;
 
 use clap::{Args, Parser};
@@ -177,6 +178,7 @@ impl DataEvent {
         ret
     }
 
+    #[allow(dead_code)]
     pub fn sequence(&self) -> usize {
         match self {
             DataEvent::Default { sequence, .. } => *sequence,
@@ -207,7 +209,7 @@ pub struct RunnerConfig {
     pub count: usize,
     pub topic_format: String,
     pub disable_unqiue_clientid_prefix: bool,
-    pub tasks: Vec<DataEvent>,
+    pub tasks: VecDeque<DataEvent>,
     pub keep_alive: u64,
     pub max_inflight: u16,
     pub conn_timeout: u64,
@@ -267,20 +269,20 @@ impl From<SimulatorConfig> for RunnerConfig {
         let imu_delay = Duration::from_millis(imu_delay);
         let bms_delay = Duration::from_millis(bms_delay);
         let gps_delay = Duration::from_millis(gps_delay);
-        let tasks = vec![
-            DataEvent::Imu {
-                sequence: 1,
-                delay: imu_delay,
-            },
-            DataEvent::Bms {
-                sequence: 1,
-                delay: bms_delay,
-            },
-            DataEvent::Gps {
-                sequence: 1,
-                delay: gps_delay,
-            },
-        ];
+        let mut tasks = VecDeque::new();
+        tasks.push_back(DataEvent::Imu {
+            sequence: 1,
+            delay: imu_delay,
+        });
+
+        tasks.push_back(DataEvent::Bms {
+            sequence: 1,
+            delay: bms_delay,
+        });
+        tasks.push_back(DataEvent::Gps {
+            sequence: 1,
+            delay: gps_delay,
+        });
 
         Self {
             server: value.network_config.server,
@@ -312,11 +314,12 @@ impl From<BenchConfig> for RunnerConfig {
             1000 / value.rate
         };
         let delay = Duration::from_millis(delay);
-        let tasks = vec![DataEvent::Default {
+        let mut tasks = VecDeque::new();
+        tasks.push_back(DataEvent::Default {
             sequence: 1,
             delay,
             payload_size: value.payload_size,
-        }];
+        });
 
         Self {
             server: value.network_config.server,

@@ -1,5 +1,10 @@
 use std::{fs, io, sync::Arc, time::Instant};
 
+use crate::{
+    bench::ConnectionError,
+    cli::RunnerConfig,
+    common::{PubStats, UNIQUE_ID},
+};
 use futures::StreamExt;
 use hdrhistogram::Histogram;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, QoS, Transport};
@@ -8,21 +13,15 @@ use tokio::{
     task,
     time::{self, Duration},
 };
-use tokio_util::time::DelayQueue;
 
-use crate::{
-    bench::ConnectionError,
-    bench::{gendata::generate_data, PubStats},
-    cli::{DataEvent, RunnerConfig},
-    common::UNIQUE_ID,
-};
+use super::gendata::GenData;
 
 pub struct Publisher {
     id: String,
     config: Arc<RunnerConfig>,
     client: AsyncClient,
     eventloop: EventLoop,
-    queue: DelayQueue<DataEvent>,
+    generator: GenData,
 }
 
 impl Publisher {
@@ -35,11 +34,7 @@ impl Publisher {
             .network_options
             .set_connection_timeout(config.conn_timeout);
 
-        let mut queue = DelayQueue::new();
-
-        for task in &config.tasks {
-            queue.insert(*task, task.duration());
-        }
+        let generator = GenData::new(config.count, config.tasks.clone());
 
         loop {
             let event = match eventloop.poll().await {
@@ -69,7 +64,7 @@ impl Publisher {
             config,
             client,
             eventloop,
-            queue,
+            generator,
         })
     }
 
@@ -78,7 +73,7 @@ impl Publisher {
         let inflight = self.config.max_inflight;
         let count = self.config.count;
         let id = self.id.clone();
-        let queue = self.queue;
+        let generator = self.generator;
 
         let mut acks_expected = count;
         let mut outgoing_elapsed = Duration::from_secs(0);
@@ -109,7 +104,7 @@ impl Publisher {
         if count != 0 {
             // delay between messages in milliseconds
             task::spawn(async move {
-                requests(topic, count, client, qos, queue).await;
+                requests(topic, client, qos, generator).await;
             });
         } else {
             // Just keep this connection alive
@@ -221,32 +216,12 @@ impl Publisher {
 }
 
 /// make count number of requests at specified QoS.
-async fn requests(
-    topic: String,
-    count: usize,
-    client: AsyncClient,
-    qos: QoS,
-    mut queue: DelayQueue<DataEvent>,
-) {
-    let mut curr_count = 0;
-    while let Some(t) = queue.next().await {
-        // let expected_time = t.deadline();
-        // let curr_time = Instant::now();
-
-        let event_type = t.into_inner();
-        let payload = generate_data(event_type);
-
-        queue.insert(event_type.inc_sequence(), event_type.duration());
-
+async fn requests(topic: String, client: AsyncClient, qos: QoS, generator: GenData) {
+    let mut stream = generator.into_stream();
+    while let Some(payload) = stream.next().await {
         // These errors are usually due to eventloop task being dead. We can ignore the
         // error here as the failed eventloop task would have already printed an error
         if let Err(_e) = client.publish(topic.as_str(), qos, false, payload).await {
-            break;
-        }
-
-        curr_count += 1;
-
-        if curr_count == count {
             break;
         }
     }
