@@ -232,6 +232,8 @@ async fn requests(topic: String, client: AsyncClient, qos: QoS, generator: GenDa
         {
             break;
         }
+
+        info!("published {}", event.sequence());
     }
 
     if qos == QoS::AtMostOnce {

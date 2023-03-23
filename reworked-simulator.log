@@ -1,0 +1,51 @@
+Aggregate PubStats: (
+    PubStats {
+        outgoing_publish: 1000000,
+        throughput: 347744.4,
+        reconnects: 0,
+    },
+    153852.2533069014,
+)
+Aggregate SubStats: (
+    SubStats {
+        publish_count: 10000000,
+        puback_count: 0,
+        reconnects: 0,
+        throughput: 1165098.3,
+    },
+    1146668.414433953,
+)
+Aggregate PubStats: (
+    PubStats {
+        outgoing_publish: 1000000,
+        throughput: 334898.0,
+        reconnects: 0,
+    },
+    151349.47298494822,
+)
+Aggregate SubStats: (
+    SubStats {
+        publish_count: 10000000,
+        puback_count: 0,
+        reconnects: 0,
+        throughput: 1121249.3,
+    },
+    1099226.6696680333,
+)
+Aggregate PubStats: (
+    PubStats {
+        outgoing_publish: 1000000,
+        throughput: 287139.03,
+        reconnects: 0,
+    },
+    150212.07036229473,
+)
+Aggregate SubStats: (
+    SubStats {
+        publish_count: 10000000,
+        puback_count: 0,
+        reconnects: 0,
+        throughput: 1089962.6,
+    },
+    1073113.836384285,
+)

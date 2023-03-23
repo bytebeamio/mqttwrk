@@ -190,7 +190,6 @@ impl DataEvent {
         ret
     }
 
-    #[allow(dead_code)]
     pub fn sequence(&self) -> usize {
         match self {
             DataEvent::Default { sequence, .. } => *sequence,
