@@ -238,7 +238,7 @@ pub enum _Inner<DataEvent> {
 }
 
 impl Stream for St {
-    type Item = String;
+    type Item = (DataEvent, String);
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
@@ -267,6 +267,6 @@ impl Stream for St {
 
         self.count -= 1;
 
-        Poll::Ready(Some(generate_data(event)))
+        Poll::Ready(Some((event, generate_data(event))))
     }
 }

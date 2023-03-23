@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::fmt::Display;
 use std::time::Duration;
 
 use clap::{Args, Parser};
@@ -128,7 +129,7 @@ struct _NetworkConfig {
     pub conn_timeout: u64,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DataEvent {
     Default {
         sequence: usize,
@@ -147,6 +148,17 @@ pub enum DataEvent {
         sequence: usize,
         delay: Duration,
     },
+}
+
+impl Display for DataEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Default { .. } => f.write_str("default"),
+            Self::Imu { .. } => f.write_str("imu"),
+            Self::Bms { .. } => f.write_str("bms"),
+            Self::Gps { .. } => f.write_str("gps"),
+        }
+    }
 }
 
 impl DataEvent {

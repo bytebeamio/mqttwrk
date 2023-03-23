@@ -1,8 +1,8 @@
-use std::{fs, io, sync::Arc, time::Instant};
+use std::{collections::HashMap, fs, io, sync::Arc, time::Instant};
 
 use crate::{
     bench::ConnectionError,
-    cli::RunnerConfig,
+    cli::{DataEvent, RunnerConfig},
     common::{PubStats, UNIQUE_ID},
 };
 use futures::StreamExt;
@@ -218,10 +218,18 @@ impl Publisher {
 /// make count number of requests at specified QoS.
 async fn requests(topic: String, client: AsyncClient, qos: QoS, generator: GenData) {
     let mut stream = generator.into_stream();
-    while let Some(payload) = stream.next().await {
+    let mut topic_cache: HashMap<DataEvent, String> = HashMap::new();
+
+    while let Some((event, payload)) = stream.next().await {
         // These errors are usually due to eventloop task being dead. We can ignore the
         // error here as the failed eventloop task would have already printed an error
-        if let Err(_e) = client.publish(topic.as_str(), qos, false, payload).await {
+        topic_cache
+            .entry(event)
+            .or_insert(topic.replace("{data_type}", &event.to_string()));
+        if let Err(_e) = client
+            .publish(topic_cache.get(&event).unwrap(), qos, false, payload)
+            .await
+        {
             break;
         }
     }
