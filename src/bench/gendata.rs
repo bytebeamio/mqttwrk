@@ -1,7 +1,12 @@
-use crate::cli::DataType;
+use crate::cli::DataEvent;
 use fake::{Dummy, Fake, Faker};
+use futures::Stream;
+use futures::StreamExt;
 use serde::Serialize;
+use std::collections::VecDeque;
+use std::task::Poll;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio_util::time::DelayQueue;
 
 #[derive(Debug, Serialize, Dummy)]
 pub struct Imu {
@@ -123,21 +128,21 @@ pub struct Bms {
     pack_status: i32,
 }
 
-pub fn generate_data(sequence: usize, data_type: DataType) -> String {
+pub fn generate_data(data_type: DataEvent) -> String {
     let payload: String = match data_type {
-        DataType::Default(payload_size) => {
+        DataEvent::Default { payload_size, .. } => {
             let fake_data = vec![0; payload_size];
             serde_json::to_string(&fake_data).unwrap()
         }
-        DataType::Gps => {
+        DataEvent::Gps { sequence, .. } => {
             let fake_data = vec![dummy_gps(sequence as u32)];
             serde_json::to_string(&fake_data).unwrap()
         }
-        DataType::Imu => {
+        DataEvent::Imu { sequence, .. } => {
             let fake_data = vec![dummy_imu(sequence as u32)];
             serde_json::to_string(&fake_data).unwrap()
         }
-        DataType::Bms => {
+        DataEvent::Bms { sequence, .. } => {
             let fake_data = vec![dummy_bms(sequence as u32)];
             serde_json::to_string(&fake_data).unwrap()
         }
@@ -181,5 +186,87 @@ pub fn dummy_gps(sequence: u32) -> Gps {
         sequence,
         timestamp,
         ..Faker.fake()
+    }
+}
+
+pub struct GenData {
+    count: usize,
+    events: VecDeque<DataEvent>,
+}
+
+impl GenData {
+    pub fn new(count: usize, events: VecDeque<DataEvent>) -> Self {
+        Self { count, events }
+    }
+}
+
+pub struct St {
+    queue: _Inner<DataEvent>,
+    count: usize,
+}
+
+impl GenData {
+    pub fn into_stream(self) -> St {
+        // If all the DataEvent have Duration of `0` that means we don't want to throttle so use
+        // `VecDeque` instead of `DelayQueue`
+        if self.events.iter().all(|event| event.duration().is_zero()) {
+            let mut delay_queue = DelayQueue::new();
+            for event in &self.events {
+                delay_queue.insert(*event, event.duration());
+            }
+
+            St {
+                queue: _Inner::DelayQueue(delay_queue),
+                count: self.count,
+            }
+        } else {
+            let mut queue = VecDeque::new();
+            for event in &self.events {
+                queue.push_back(*event);
+            }
+            St {
+                queue: _Inner::Queue(queue),
+                count: self.count,
+            }
+        }
+    }
+}
+
+pub enum _Inner<DataEvent> {
+    DelayQueue(DelayQueue<DataEvent>),
+    Queue(VecDeque<DataEvent>),
+}
+
+impl Stream for St {
+    type Item = (DataEvent, String);
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        if self.count == 0 {
+            return Poll::Ready(None);
+        }
+
+        let event = match &mut self.queue {
+            _Inner::DelayQueue(ref mut q) => match q.poll_next_unpin(cx) {
+                Poll::Ready(Some(t)) => {
+                    let event = t.into_inner();
+                    q.insert(event.inc_sequence(), event.duration());
+                    event
+                }
+                Poll::Ready(None) => return Poll::Ready(None),
+                Poll::Pending => return Poll::Pending,
+            },
+            _Inner::Queue(ref mut q) => {
+                let event = q.pop_front().unwrap();
+                q.push_back(event.inc_sequence());
+                event
+            }
+        };
+
+        self.count -= 1;
+
+        Poll::Ready(Some((event, generate_data(event))))
     }
 }

@@ -50,13 +50,12 @@ pub(crate) async fn start(config: impl Into<RunnerConfig>) {
     let barrier_sub = Arc::new(Barrier::new(config.subscribers + 1));
     let barrier_pub = Arc::new(Barrier::new(config.publishers + 1));
 
-    let unique_id;
-    if config.disable_unqiue_clientid_prefix {
-        unique_id = "".to_string();
+    let unique_id = if config.disable_unqiue_clientid_prefix {
+        "".to_string()
     } else {
         let id = &(*UNIQUE_ID);
-        unique_id = format!("-{id}");
-    }
+        format!("-{id}")
+    };
 
     // spawning subscribers
     for i in 0..config.subscribers {
@@ -78,7 +77,7 @@ pub(crate) async fn start(config: impl Into<RunnerConfig>) {
         let id = format!("pub{unique_id}-{i:05}");
         let barrier_handle = barrier_pub.clone();
         pub_bar.set_message(format!("spawning {id}"));
-        let mut publisher = publisher::Publisher::new(id, config).await.unwrap();
+        let publisher = publisher::Publisher::new(id, config).await.unwrap();
         handles_pub.spawn(async move { publisher.start(barrier_handle).await });
         pub_bar.inc(1);
     }

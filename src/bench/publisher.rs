@@ -1,5 +1,11 @@
-use std::{fs, io, sync::Arc, time::Instant};
+use std::{collections::HashMap, fs, io, sync::Arc, time::Instant};
 
+use crate::{
+    bench::ConnectionError,
+    cli::{DataEvent, RunnerConfig},
+    common::{PubStats, UNIQUE_ID},
+};
+use futures::StreamExt;
 use hdrhistogram::Histogram;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, QoS, Transport};
 use tokio::{
@@ -8,18 +14,14 @@ use tokio::{
     time::{self, Duration},
 };
 
-use crate::{
-    bench::ConnectionError,
-    bench::{gendata::generate_data, PubStats},
-    cli::{DataType, RunnerConfig},
-    common::UNIQUE_ID,
-};
+use super::gendata::GenData;
 
 pub struct Publisher {
     id: String,
     config: Arc<RunnerConfig>,
     client: AsyncClient,
     eventloop: EventLoop,
+    generator: GenData,
 }
 
 impl Publisher {
@@ -31,6 +33,8 @@ impl Publisher {
         eventloop
             .network_options
             .set_connection_timeout(config.conn_timeout);
+
+        let generator = GenData::new(config.count, config.tasks.clone());
 
         loop {
             let event = match eventloop.poll().await {
@@ -60,25 +64,24 @@ impl Publisher {
             config,
             client,
             eventloop,
+            generator,
         })
     }
 
-    pub async fn start(&mut self, barrier_handle: Arc<Barrier>) -> PubStats {
+    pub async fn start(mut self, barrier_handle: Arc<Barrier>) -> PubStats {
         let qos = get_qos(self.config.publish_qos);
         let inflight = self.config.max_inflight;
         let count = self.config.count;
-        let rate = self.config.rate;
         let id = self.id.clone();
-        let payload = self.config.payload;
+        let generator = self.generator;
 
         let mut acks_expected = count;
         let mut outgoing_elapsed = Duration::from_secs(0);
         let mut acks_count = 0;
 
         let mut topic = self.config.topic_format.replace("{pub_id}", &self.id);
-        topic = topic.replace("{unique_id}", &(*UNIQUE_ID));
-        topic = topic.replace("{data_type}", &self.config.payload.to_string());
-        let client = self.client.clone();
+        topic = topic.replace("{unique_id}", &UNIQUE_ID);
+        let client = self.client;
 
         let wait = barrier_handle.wait();
         tokio::pin!(wait);
@@ -100,9 +103,8 @@ impl Publisher {
         // which can be used to test pings
         if count != 0 {
             // delay between messages in milliseconds
-            let delay = if rate == 0 { 0 } else { 1000 / rate };
             task::spawn(async move {
-                requests(topic, count, client, qos, delay, payload).await;
+                requests(topic, client, qos, generator).await;
             });
         } else {
             // Just keep this connection alive
@@ -202,7 +204,7 @@ impl Publisher {
 
         // if publish_qos is 0 assume we send all publishes
         if self.config.publish_qos == 0 {
-            acks_count = self.config.count;
+            acks_count = count;
         }
 
         PubStats {
@@ -214,38 +216,29 @@ impl Publisher {
 }
 
 /// make count number of requests at specified QoS.
-async fn requests(
-    topic: String,
-    count: usize,
-    client: AsyncClient,
-    qos: QoS,
-    delay: u64,
-    data_type: DataType,
-) {
-    let mut interval = match delay {
-        0 => None,
-        delay => Some(time::interval(time::Duration::from_millis(delay))),
-    };
+async fn requests(topic: String, client: AsyncClient, qos: QoS, generator: GenData) {
+    let mut stream = generator.into_stream();
+    let mut topic_cache: HashMap<DataEvent, String> = HashMap::new();
 
-    for i in 0..count {
-        let payload = generate_data(i, data_type);
-        if let Some(interval) = &mut interval {
-            interval.tick().await;
-        }
-
+    while let Some((event, payload)) = stream.next().await {
         // These errors are usually due to eventloop task being dead. We can ignore the
         // error here as the failed eventloop task would have already printed an error
-        if let Err(_e) = client.publish(topic.as_str(), qos, false, payload).await {
+        topic_cache
+            .entry(event)
+            .or_insert(topic.replace("{data_type}", &event.to_string()));
+        if let Err(_e) = client
+            .publish(topic_cache.get(&event).unwrap(), qos, false, payload)
+            .await
+        {
             break;
         }
 
-        info!("published {}", i);
+        info!("published {}", event.sequence());
     }
 
     if qos == QoS::AtMostOnce {
-        let payload = generate_data(count, data_type);
         if let Err(_e) = client
-            .publish(topic.as_str(), QoS::AtLeastOnce, false, payload)
+            .publish("test/complete", QoS::AtLeastOnce, false, "")
             .await
         {
             // TODO
