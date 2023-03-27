@@ -130,10 +130,7 @@ pub struct Bms {
 
 pub fn generate_data(data_type: DataEvent) -> String {
     let payload: String = match data_type {
-        DataEvent::Default { payload_size, .. } => {
-            let fake_data = vec![0; payload_size];
-            serde_json::to_string(&fake_data).unwrap()
-        }
+        DataEvent::Default { payload_size, .. } => "\0".repeat(payload_size),
         DataEvent::Gps { sequence, .. } => {
             let fake_data = vec![dummy_gps(sequence as u32)];
             serde_json::to_string(&fake_data).unwrap()
@@ -209,7 +206,7 @@ impl GenData {
     pub fn into_stream(self) -> St {
         // If all the DataEvent have Duration of `0` that means we don't want to throttle so use
         // `VecDeque` instead of `DelayQueue`
-        if self.events.iter().all(|event| event.duration().is_zero()) {
+        if !self.events.iter().all(|event| event.duration().is_zero()) {
             let mut delay_queue = DelayQueue::new();
             for event in &self.events {
                 delay_queue.insert(*event, event.duration());

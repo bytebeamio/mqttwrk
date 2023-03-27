@@ -102,7 +102,6 @@ impl Publisher {
         // If publish count is 0, don't publish. This is an idle connection
         // which can be used to test pings
         if count != 0 {
-            // delay between messages in milliseconds
             task::spawn(async move {
                 requests(topic, client, qos, generator).await;
             });

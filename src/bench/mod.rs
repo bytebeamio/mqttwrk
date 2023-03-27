@@ -59,11 +59,14 @@ pub(crate) async fn start(config: impl Into<RunnerConfig>) {
 
     // spawning subscribers
     for i in 0..config.subscribers {
-        let config = Arc::clone(&config);
         let id = format!("sub{unique_id}-{i:05}");
         let barrier_handle = barrier_sub.clone();
+
         sub_bar.set_message(format!("spawning {id}"));
-        let mut subscriber = subscriber::Subscriber::new(id, config).await.unwrap();
+        let mut subscriber = subscriber::Subscriber::new(id, Arc::clone(&config))
+            .await
+            .unwrap();
+
         handles_sub.spawn(async move { subscriber.start(barrier_handle).await });
         sub_bar.inc(1);
     }
@@ -73,11 +76,14 @@ pub(crate) async fn start(config: impl Into<RunnerConfig>) {
     sub_bar.finish_with_message("Done!");
 
     for i in 0..config.publishers {
-        let config = Arc::clone(&config);
         let id = format!("pub{unique_id}-{i:05}");
         let barrier_handle = barrier_pub.clone();
+
         pub_bar.set_message(format!("spawning {id}"));
-        let publisher = publisher::Publisher::new(id, config).await.unwrap();
+        let publisher = publisher::Publisher::new(id, Arc::clone(&config))
+            .await
+            .unwrap();
+
         handles_pub.spawn(async move { publisher.start(barrier_handle).await });
         pub_bar.inc(1);
     }

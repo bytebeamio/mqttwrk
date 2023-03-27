@@ -22,6 +22,8 @@ use crate::cli::Cli;
 use clap::Parser;
 
 fn main() {
+    console_subscriber::init();
+
     pretty_env_logger::init();
     let config: Cli = Cli::parse();
 
