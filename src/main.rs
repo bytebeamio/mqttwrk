@@ -43,5 +43,5 @@ fn main() {
         Cli::Test => {
             test::start();
         }
-    }
+    };
 }

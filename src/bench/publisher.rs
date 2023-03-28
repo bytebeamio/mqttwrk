@@ -102,9 +102,12 @@ impl Publisher {
         // If publish count is 0, don't publish. This is an idle connection
         // which can be used to test pings
         if count != 0 {
-            task::spawn(async move {
-                requests(topic, client, qos, generator).await;
-            });
+            task::Builder::new()
+                .name(&format!("req-{}", &self.id))
+                .spawn(async move {
+                    requests(topic, client, qos, generator).await;
+                })
+                .unwrap();
         } else {
             // Just keep this connection alive
             acks_expected = 1;

@@ -94,7 +94,7 @@ struct _CommonConfig {
 
     #[arg(
         long,
-        default_value_t = true,
+        default_value_t = false,
         long_help = "\
 If true, prefixes a unique_id to client_id of each publisher and subsciber. 
 Same as `{unique_id}` in `topic_format`.
