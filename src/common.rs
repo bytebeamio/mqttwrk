@@ -51,7 +51,7 @@ impl WrappedEventLoop {
         loop {
             let tmp = self.inner.poll().await?;
             match tmp {
-                Event::Outgoing(_) | Event::Incoming(Incoming::PingResp) => continue,
+                Event::Outgoing(_) => continue,
                 Event::Incoming(v) => return Ok(v),
             }
         }

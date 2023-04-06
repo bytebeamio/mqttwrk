@@ -259,6 +259,7 @@ pub async fn test_keepalive(conformance_config: &ConformanceConfig) {
         PROGRESS_BAR.println(format!("Ping response {} received", i).green().to_string());
     }
 
+    PROGRESS_BAR.inc(1);
     PROGRESS_BAR.println("Ping test successful".green().to_string());
 }
 
@@ -390,10 +391,10 @@ pub async fn test_retain_on_different_connect(conformance_config: &ConformanceCo
     let _ = eventloop.poll().await.unwrap(); // incoming: pubrec
     let _ = eventloop.poll().await.unwrap(); // incoming: pubcomp
 
-    // let notif2 = eventloop.poll().await.unwrap();
-    //
-    // // We cleared all the retained messages so should only receive pings
-    // assert_eq!(notif2, Incoming::PingResp);
+    let notif2 = eventloop.poll().await.unwrap();
+
+    // We cleared all the retained messages so should only receive pings
+    assert_eq!(notif2, Incoming::PingResp);
     PROGRESS_BAR.inc(1);
     PROGRESS_BAR.println("Retained message test Successful".green().to_string());
 }
@@ -493,10 +494,10 @@ pub async fn test_retained_messages(conformance_config: &ConformanceConfig) {
     let _ = eventloop.poll().await.unwrap(); // incoming: pubrec
     let _ = eventloop.poll().await.unwrap(); // incoming: pubcomp
 
-    // let notif2 = eventloop.poll().await.unwrap();
-    //
-    // // We cleared all the retained messages so should only receive pings
-    // assert_eq!(notif2, Incoming::PingResp);
+    let notif2 = eventloop.poll().await.unwrap();
+
+    // We cleared all the retained messages so should only receive pings
+    assert_eq!(notif2, Incoming::PingResp);
     PROGRESS_BAR.inc(1);
     PROGRESS_BAR.println("Retained message test Successful".green().to_string());
 }
@@ -779,11 +780,11 @@ pub async fn test_unsubscribe(conformance_config: &ConformanceConfig) {
     let notif2 = eventloop1.poll().await.unwrap();
     assert!(matches!(notif2, Incoming::Publish(Publish { .. })));
 
-    // for _ in 0..5 {
-    //     let notif3 = eventloop1.poll().await.unwrap();
-    //     // dbg!(&notif3);
-    //     assert!(matches!(notif3, Incoming::PingResp));
-    // }
+    for _ in 0..5 {
+        let notif3 = eventloop1.poll().await.unwrap();
+        // dbg!(&notif3);
+        assert!(matches!(notif3, Incoming::PingResp));
+    }
     PROGRESS_BAR.inc(1);
     PROGRESS_BAR.println("Unsubscribe test Successful".green().to_string());
 }
@@ -856,7 +857,6 @@ pub async fn test_redelivery_on_reconnect(conformance_config: &ConformanceConfig
     let _ = eventloop.poll().await.unwrap(); // connack
 
     let incoming1 = eventloop.poll().await.unwrap(); // incoming:publish
-                                                     // dbg!(&incoming1);
     assert!(matches!(incoming1, Incoming::Publish(Publish { .. })));
 
     PROGRESS_BAR.inc(1);
