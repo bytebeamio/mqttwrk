@@ -1,13 +1,14 @@
 [package]
 name = "mqttwrk"
 description = "Wrk inspired tool for scale and performance testing mqtt brokers"
-version = "0.1.1"
+version = "0.2.0"
 license = "Apache-2.0"
 repository = "https://github.com/bytebeamio/mqttwrk"
 authors = ["tekjar <raviteja@bytebeam.io>"]
 edition = "2018"
 keywords = ["mqtt", "iot", "wrk", "cli"]
 categories = ["network-programming"]
+exclude = ["runit/", "scripts/", ".*"]
 
 [dependencies]
 # rumqttc = {git="https://github.com/bytebeamio/rumqtt.git", branch="master"}
