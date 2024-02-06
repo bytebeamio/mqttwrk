@@ -7,7 +7,7 @@ use colored::Colorize;
 use indicatif::ProgressBar;
 use rumqttc::{
     matches, AsyncClient, ConnAck, ConnectReturnCode, Event, Incoming, LastWill, MqttOptions,
-    Outgoing, Packet, PubAck, Publish, QoS, SubAck, Subscribe, SubscribeFilter,
+    Outgoing, Packet, PubAck, PubComp, PubRec, Publish, QoS, SubAck, Subscribe, SubscribeFilter,
     SubscribeReasonCode, UnsubAck,
 };
 use std::thread;
@@ -61,6 +61,19 @@ pub async fn test_basic(conformance_config: &ConformanceConfig) {
         })
     );
 
+    client
+        .subscribe("topic/q2", QoS::ExactlyOnce)
+        .await
+        .unwrap();
+    let incoming = eventloop.poll().await.unwrap(); // suback
+    assert_eq!(
+        incoming,
+        Incoming::SubAck(SubAck {
+            pkid: 3,
+            return_codes: [SubscribeReasonCode::Success(QoS::ExactlyOnce)].to_vec(),
+        })
+    );
+
     // Qos 0 Publish
     client
         .publish("topic/q0", QoS::AtMostOnce, false, "QoS::AtMostOnce")
@@ -76,11 +89,23 @@ pub async fn test_basic(conformance_config: &ConformanceConfig) {
         .await
         .unwrap();
 
+    // Qos 2 Publish
+    client
+        .publish("topic/q2", QoS::ExactlyOnce, false, "QoS::ExactlyOnce")
+        .await
+        .unwrap();
+
     let incoming = eventloop.poll().await.unwrap(); // incoming:publish
     assert!(matches!(incoming, Incoming::PubAck(PubAck { .. })));
 
     let incoming = eventloop.poll().await.unwrap(); // incoming:publish
     assert!(matches!(incoming, Incoming::Publish(Publish { .. })));
+
+    let incoming = eventloop.poll().await.unwrap(); // incoming:pubrec
+    assert!(matches!(incoming, Incoming::PubRec(PubRec { .. })));
+
+    let incoming = eventloop.poll().await.unwrap(); // incoming:pubcomp
+    assert!(matches!(incoming, Incoming::PubComp(PubComp { .. })));
 
     PROGRESS_BAR.inc(1);
     PROGRESS_BAR.println("Basic test succedeed".green().to_string());
@@ -234,6 +259,7 @@ pub async fn test_keepalive(conformance_config: &ConformanceConfig) {
         PROGRESS_BAR.println(format!("Ping response {} received", i).green().to_string());
     }
 
+    PROGRESS_BAR.inc(1);
     PROGRESS_BAR.println("Ping test successful".green().to_string());
 }
 
@@ -255,6 +281,7 @@ pub async fn test_retain_on_different_connect(conformance_config: &ConformanceCo
 
     let qos0topic = "fromb/qos 0";
     let qos1topic = "fromb/qos 1";
+    let qos2topic = "fromb/qos 2";
     let wildcardtopic = "fromb/+";
 
     let notification1 = eventloop.poll().await.unwrap(); // connack
@@ -276,19 +303,33 @@ pub async fn test_retain_on_different_connect(conformance_config: &ConformanceCo
         .await
         .unwrap();
 
-    let _ = eventloop.poll().await.unwrap(); // incoming: puback
-
     client
-        .subscribe(wildcardtopic, QoS::AtMostOnce)
+        .publish(qos2topic, QoS::ExactlyOnce, true, "QoS::ExactlyOnce")
         .await
         .unwrap();
+
+    let _ = eventloop.poll().await.unwrap(); // incoming: puback
+    let _ = eventloop.poll().await.unwrap(); // incoming: pubrec
+    let _ = eventloop.poll().await.unwrap(); // incoming: pubcomp
+
+    client
+        .subscribe(wildcardtopic, QoS::ExactlyOnce)
+        .await
+        .unwrap();
+
     let _ = eventloop.poll().await.unwrap(); //suback
 
     let notif1 = eventloop.poll().await.unwrap();
+    // dbg!(&notif1);
     assert!(matches!(notif1, Incoming::Publish(Publish { .. })));
 
     let notif2 = eventloop.poll().await.unwrap();
+    // dbg!(&notif2);
     assert!(matches!(notif2, Incoming::Publish(Publish { .. })));
+
+    let notif3 = eventloop.poll().await.unwrap();
+    // dbg!(&notif3);
+    assert!(matches!(notif3, Incoming::Publish(Publish { .. })));
 
     drop(client);
     drop(eventloop);
@@ -317,6 +358,9 @@ pub async fn test_retain_on_different_connect(conformance_config: &ConformanceCo
     let notif2 = eventloop2.poll().await.unwrap();
     assert!(matches!(notif2, Incoming::Publish(Publish { .. })));
 
+    let notif3 = eventloop2.poll().await.unwrap();
+    assert!(matches!(notif3, Incoming::Publish(Publish { .. })));
+
     let (client, mut eventloop) = common::get_client(config.clone());
 
     let notif1 = eventloop.poll().await.unwrap(); // connack
@@ -338,7 +382,14 @@ pub async fn test_retain_on_different_connect(conformance_config: &ConformanceCo
         .await
         .unwrap();
 
+    client
+        .publish(qos2topic, QoS::ExactlyOnce, true, "")
+        .await
+        .unwrap();
+
     let _ = eventloop.poll().await.unwrap(); // incoming: puback
+    let _ = eventloop.poll().await.unwrap(); // incoming: pubrec
+    let _ = eventloop.poll().await.unwrap(); // incoming: pubcomp
 
     let notif2 = eventloop.poll().await.unwrap();
 
@@ -363,6 +414,7 @@ pub async fn test_retained_messages(conformance_config: &ConformanceConfig) {
 
     let qos0topic = "fromb/qos 0";
     let qos1topic = "fromb/qos 1";
+    let qos2topic = "fromb/qos 2";
     let wildcardtopic = "fromb/+";
 
     let notification1 = eventloop.poll().await.unwrap(); // connack
@@ -384,12 +436,20 @@ pub async fn test_retained_messages(conformance_config: &ConformanceConfig) {
         .await
         .unwrap();
 
-    let _ = eventloop.poll().await.unwrap(); // incoming: puback
-
     client
-        .subscribe(wildcardtopic, QoS::AtMostOnce)
+        .publish(qos2topic, QoS::ExactlyOnce, true, "QoS::ExactlyOnce")
         .await
         .unwrap();
+
+    let _ = eventloop.poll().await.unwrap(); // incoming: puback
+    let _ = eventloop.poll().await.unwrap(); // incoming: pubrec
+    let _ = eventloop.poll().await.unwrap(); // incoming: pubcomp
+
+    client
+        .subscribe(wildcardtopic, QoS::ExactlyOnce)
+        .await
+        .unwrap();
+
     let _ = eventloop.poll().await.unwrap(); //suback
 
     let notif1 = eventloop.poll().await.unwrap();
@@ -397,6 +457,9 @@ pub async fn test_retained_messages(conformance_config: &ConformanceConfig) {
 
     let notif2 = eventloop.poll().await.unwrap();
     assert!(matches!(notif2, Incoming::Publish(Publish { .. })));
+
+    let notif3 = eventloop.poll().await.unwrap();
+    assert!(matches!(notif3, Incoming::Publish(Publish { .. })));
 
     drop(client);
     drop(eventloop);
@@ -422,7 +485,14 @@ pub async fn test_retained_messages(conformance_config: &ConformanceConfig) {
         .await
         .unwrap();
 
+    client
+        .publish(qos2topic, QoS::ExactlyOnce, true, "QoS::ExactlyOnce")
+        .await
+        .unwrap();
+
     let _ = eventloop.poll().await.unwrap(); // incoming: puback
+    let _ = eventloop.poll().await.unwrap(); // incoming: pubrec
+    let _ = eventloop.poll().await.unwrap(); // incoming: pubcomp
 
     let notif2 = eventloop.poll().await.unwrap();
 
@@ -787,7 +857,6 @@ pub async fn test_redelivery_on_reconnect(conformance_config: &ConformanceConfig
     let _ = eventloop.poll().await.unwrap(); // connack
 
     let incoming1 = eventloop.poll().await.unwrap(); // incoming:publish
-                                                     // dbg!(&incoming1);
     assert!(matches!(incoming1, Incoming::Publish(Publish { .. })));
 
     PROGRESS_BAR.inc(1);
