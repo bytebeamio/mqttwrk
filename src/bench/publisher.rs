@@ -1,5 +1,11 @@
-use std::{fs, io, sync::Arc, time::Instant};
+use std::{collections::HashMap, fs, io, sync::Arc, time::Instant};
 
+use crate::{
+    bench::ConnectionError,
+    cli::{DataEvent, RunnerConfig},
+    common::{PubStats, UNIQUE_ID},
+};
+use futures::StreamExt;
 use hdrhistogram::Histogram;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, Outgoing, QoS, Transport};
 use tokio::{
@@ -8,27 +14,27 @@ use tokio::{
     time::{self, Duration},
 };
 
-use crate::{
-    bench::{ConnectionError, PubStats},
-    BenchConfig,
-};
+use super::gendata::GenData;
 
 pub struct Publisher {
     id: String,
-    config: Arc<BenchConfig>,
+    config: Arc<RunnerConfig>,
     client: AsyncClient,
     eventloop: EventLoop,
+    generator: GenData,
 }
 
 impl Publisher {
     pub(crate) async fn new(
         id: String,
-        config: Arc<BenchConfig>,
+        config: Arc<RunnerConfig>,
     ) -> Result<Publisher, ConnectionError> {
         let (client, mut eventloop) = AsyncClient::new(options(config.clone(), &id)?, 10);
         eventloop
             .network_options
             .set_connection_timeout(config.conn_timeout);
+
+        let generator = GenData::new(config.count, config.tasks.clone());
 
         loop {
             let event = match eventloop.poll().await {
@@ -58,24 +64,24 @@ impl Publisher {
             config,
             client,
             eventloop,
+            generator,
         })
     }
 
-    pub async fn start(&mut self, barrier_handle: Arc<Barrier>) -> PubStats {
+    pub async fn start(mut self, barrier_handle: Arc<Barrier>) -> PubStats {
         let qos = get_qos(self.config.publish_qos);
         let inflight = self.config.max_inflight;
-        let payload_size = self.config.payload_size;
         let count = self.config.count;
-        let rate = self.config.rate;
         let id = self.id.clone();
+        let generator = self.generator;
 
-        let start = Instant::now();
         let mut acks_expected = count;
         let mut outgoing_elapsed = Duration::from_secs(0);
         let mut acks_count = 0;
 
-        let topic = format!("hello/{}/world", self.id);
-        let client = self.client.clone();
+        let mut topic = self.config.topic_format.replace("{pub_id}", &self.id);
+        topic = topic.replace("{unique_id}", &UNIQUE_ID);
+        let client = self.client;
 
         let wait = barrier_handle.wait();
         tokio::pin!(wait);
@@ -91,14 +97,17 @@ impl Publisher {
             };
         }
 
+        let start = Instant::now();
+
         // If publish count is 0, don't publish. This is an idle connection
         // which can be used to test pings
         if count != 0 {
-            // delay between messages in milliseconds
-            let delay = if rate == 0 { 0 } else { 1000 / rate };
-            task::spawn(async move {
-                requests(topic, payload_size, count, client, qos, delay).await;
-            });
+            task::Builder::new()
+                .name(&format!("req-{}", &self.id))
+                .spawn(async move {
+                    requests(topic, client, qos, generator).await;
+                })
+                .unwrap();
         } else {
             // Just keep this connection alive
             acks_expected = 1;
@@ -197,7 +206,7 @@ impl Publisher {
 
         // if publish_qos is 0 assume we send all publishes
         if self.config.publish_qos == 0 {
-            acks_count = self.config.count;
+            acks_count = count;
         }
 
         PubStats {
@@ -209,43 +218,29 @@ impl Publisher {
 }
 
 /// make count number of requests at specified QoS.
-async fn requests(
-    topic: String,
-    payload_size: usize,
-    mut count: usize,
-    client: AsyncClient,
-    qos: QoS,
-    delay: u64,
-) {
-    let mut interval = match delay {
-        0 => None,
-        delay => Some(time::interval(time::Duration::from_millis(delay))),
-    };
+async fn requests(topic: String, client: AsyncClient, qos: QoS, generator: GenData) {
+    let mut stream = generator.into_stream();
+    let mut topic_cache: HashMap<DataEvent, String> = HashMap::new();
 
-    // For QoS requests we send an extra publish at last with QoS1 which is used for syncronization
-    if qos == QoS::AtMostOnce {
-        count -= 1;
-    }
-
-    for i in 0..count {
-        let payload = vec![0; payload_size];
-        if let Some(interval) = &mut interval {
-            interval.tick().await;
-        }
-
+    while let Some((event, payload)) = stream.next().await {
         // These errors are usually due to eventloop task being dead. We can ignore the
         // error here as the failed eventloop task would have already printed an error
-        if let Err(_e) = client.publish(topic.as_str(), qos, false, payload).await {
+        topic_cache
+            .entry(event)
+            .or_insert(topic.replace("{data_type}", &event.to_string()));
+        if let Err(_e) = client
+            .publish(topic_cache.get(&event).unwrap(), qos, false, payload)
+            .await
+        {
             break;
         }
 
-        info!("published {}", i);
+        info!("published {}", event.sequence());
     }
 
     if qos == QoS::AtMostOnce {
-        let payload = vec![0; payload_size];
         if let Err(_e) = client
-            .publish(topic.as_str(), QoS::AtLeastOnce, false, payload)
+            .publish("test/complete", QoS::AtLeastOnce, false, "")
             .await
         {
             // TODO
@@ -263,7 +258,7 @@ fn get_qos(qos: i16) -> QoS {
     }
 }
 
-fn options(config: Arc<BenchConfig>, id: &str) -> io::Result<MqttOptions> {
+fn options(config: Arc<RunnerConfig>, id: &str) -> io::Result<MqttOptions> {
     let mut options = MqttOptions::new(id, &config.server, config.port);
     options.set_keep_alive(Duration::from_secs(config.keep_alive));
     options.set_inflight(config.max_inflight);

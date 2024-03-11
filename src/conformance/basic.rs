@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 
+use crate::cli::ConformanceConfig;
 use crate::common::{self, WrappedEventLoop};
 use crate::conformance::PROGRESS_BAR;
-use crate::ConformanceConfig;
 use colored::Colorize;
 use indicatif::ProgressBar;
 use rumqttc::{
@@ -433,6 +433,7 @@ pub async fn test_retained_messages(conformance_config: &ConformanceConfig) {
 }
 
 // TODO: Currently rumqttc panics for this test. According to spec broker should be the one handling this not client
+#[allow(dead_code)]
 pub async fn test_zero_length_clientid(conformance_config: &ConformanceConfig) {
     PROGRESS_BAR.set_message("Zero length clientid".yellow().to_string());
     let mut config = MqttOptions::new("", &conformance_config.server, conformance_config.port);
@@ -622,6 +623,7 @@ pub async fn test_will_message(conformance_config: &ConformanceConfig) {
     PROGRESS_BAR.println("Will message test Successful".green().to_string());
 }
 
+#[allow(dead_code)]
 pub async fn test_dollar_topic_filter(conformance_config: &ConformanceConfig) {
     PROGRESS_BAR.set_message("Dollar topic test".yellow().to_string());
     let mut config = MqttOptions::new(
